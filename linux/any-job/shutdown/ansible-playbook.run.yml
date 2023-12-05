@@ -1,0 +1,14 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: run
+  hosts: linux
+  tasks:
+
+    - name: shutdown the server
+      become: yes
+      ansible.builtin.shell:
+        cmd: shutdown now
+      async: 1
+      poll: 0
