@@ -1,0 +1,93 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: run
+  hosts: linux
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].bench | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].bench | default(None,true) != None
+          msg: "host var assert fail 'bench'"
+          quiet: true
+
+      - block:
+        - name: localhost|mkdir bench home
+          delegate_to: localhost
+          ansible.builtin.file:
+            state: directory
+            path: ~/.bench
+
+        - name: localhost|download bench script
+          vars:
+            bench_url: "{{ bench.url | default('https://bench.sh',true) }}"
+          delegate_to: localhost
+          ansible.builtin.get_url:
+            url: "{{ bench_url }}"
+            dest: ~/.bench/bench.sh
+            http_agent: curl/7.54
+          register: bench_download
+
+      - name: mkdir bench home
+        ansible.builtin.file:
+          state: directory
+          path: ~/.bench
+
+      - name: push bench script
+        ansible.builtin.copy:
+          src: "{{ bench_download.dest }}"
+          dest: ~/.bench/bench.sh
+        register: bench_push
+
+      - name: run bench script
+        become: true
+        ansible.builtin.shell:
+          cmd: "bash {{ bench_push.dest }}"
+        register: bench_run
+        ignore_errors: true
+        async: 3600
+        poll: 60
+
+      - name: save bench output
+        vars:
+          regex_no_color: '\x1b\[([0-9]{1,3}(;[0-9]{1,2})?(;[0-9]{1,2})?)?[mGKHJ]'
+        ansible.builtin.copy:
+          content: |
+            {{ bench_run.stdout | default('',true) | regex_replace(regex_no_color, '') }}
+            {{ bench_run.stderr | default('',true) | regex_replace(regex_no_color, '') }}
+          dest: "~/.bench/bench.{{ ansible_date_time.epoch }}.output"
+
+      - name: fetch bench output
+        when: bench.output is defined
+        ansible.builtin.fetch:
+          src: "~/.bench/bench.{{ ansible_date_time.epoch }}.output"
+          dest: "{{ bench.output }}/"
+          flat: false
+
+      - name: print bench output
+        vars:
+          linux_hostvars: "{{ hostvars | dict2items
+            | selectattr('key','in',ansible_play_hosts)
+            | selectattr('value.bench_run','defined') }}"
+          regex_no_clear: '\x1b\[([0-9]{1,3}(;[0-9]{1,2})?(;[0-9]{1,2})?)?[HJ]'
+        when: bench.print | default(true) | bool
+        ansible.builtin.pause:
+          seconds: 1
+          prompt: |
+            {% for host in linux_hostvars %}
+
+            [{{ host.key }}] =>
+            --------------------------------------------------
+            {{ host.value.bench_run.stdout | default('',true) | regex_replace(regex_no_clear, '') }}
+            {{ host.value.bench_run.stderr | default('',true) | regex_replace(regex_no_clear, '') }}
+            {% endfor %}
