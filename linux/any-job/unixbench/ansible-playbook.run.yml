@@ -1,0 +1,174 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: run
+  hosts: linux
+  tasks:
+
+    - vars:
+        mode: "{{ unixbench.mode | default('script',true) }}"
+      rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].unixbench | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].unixbench | default(None,true) != None
+          msg: "host var assert fail 'unixbench'"
+          quiet: true
+
+      - vars:
+          unixbench_url: "{{ unixbench.url | default('https://github.com/teddysun/across/raw/master/unixbench.sh',true) }}"
+        rescue:
+        - name: script|rescue|fail tasks
+          when:
+            - mode == 'script'
+          ansible.builtin.fail:
+            msg: "run fail. exclude var mode not match."
+        
+        block:
+        - name: script|assert mode
+          ansible.builtin.assert:
+            that:
+              - mode == 'script'
+            msg: "var mode not match"
+            quiet: true
+
+        - block:
+          - name: script|localhost|mkdir unixbench home
+            delegate_to: localhost
+            ansible.builtin.file:
+              state: directory
+              path: ~/.unixbench
+
+          - name: script|localhost|download unixbench script
+            delegate_to: localhost
+            ansible.builtin.get_url:
+              url: "{{ unixbench_url }}"
+              dest: ~/.unixbench/unixbench.sh
+            register: unixbench_download
+
+        - name: script|mkdir unixbench home
+          ansible.builtin.file:
+            state: directory
+            path: ~/.unixbench
+
+        - name: script|push unixbench script
+          ansible.builtin.copy:
+            src: "{{ unixbench_download.dest }}"
+            dest: ~/.unixbench/unixbench.sh
+          register: unixbench_push
+
+        - name: script|run unixbench script
+          become: true
+          ansible.builtin.shell:
+            cmd: "bash {{ unixbench_push.dest }}"
+          register: unixbench_run
+          ignore_errors: true
+          async: 3600
+          poll: 60
+
+      - vars:
+          unixbench_version: "{{ unixbench.version | default('v5.1.3',true) }}"
+          unixbench_repo: "{{ unixbench.repository | default('https://github.com/kdlucas/byte-unixbench.git',true) }}"
+          unixbench_dest: "~/.unixbench/{{ unixbench_version }}"
+        rescue:
+        - name: source|rescue|fail tasks
+          when:
+            - mode == 'source'
+          ansible.builtin.fail:
+            msg: "run fail. exclude var mode not match."
+        
+        block:
+        - name: source|assert mode
+          ansible.builtin.assert:
+            that:
+              - mode == 'source'
+            msg: "var mode not match"
+            quiet: true
+
+        - name: source|install yum package
+          become: true
+          when: ansible_pkg_mgr == 'yum'
+          ansible.builtin.package:
+            name:
+              - git
+              - make
+              - automake
+              - autoconf
+              - gcc
+              - gcc-c++
+              - time
+              - perl-Time-HiRes
+            state: present
+
+        - name: source|install apt package
+          become: true
+          when: ansible_pkg_mgr == 'apt'
+          ansible.builtin.package:
+            name:
+              - git
+              - make
+              - automake
+              - autoconf
+              - gcc
+              - time
+              - perl
+            state: present
+
+        - name: source|clone source
+          ansible.builtin.git:
+            repo: "{{ unixbench_repo }}"
+            version: "{{ unixbench_version }}"
+            dest: "{{ unixbench_dest }}"
+
+        - name: source|run make
+          ansible.builtin.shell:
+            cmd: make
+            chdir: "{{ ub_dir }}/UnixBench"
+
+        - name: source|run run
+          become: true
+          ansible.builtin.shell:
+            cmd: ./Run
+            chdir: "{{ ub_dir }}/UnixBench"
+          register: unixbench_run
+          ignore_errors: true
+          async: 3600
+          poll: 60
+
+      - name: save unixbench output
+        ansible.builtin.copy:
+          content: |
+            {{ unixbench_run.stdout | default('',true) }}
+            {{ unixbench_run.stderr | default('',true) }}
+          dest: "~/.unixbench/unixbench.{{ ansible_date_time.epoch }}.output"
+
+      - name: fetch unixbench output
+        when: unixbench.output is defined
+        ansible.builtin.fetch:
+          src: "~/.unixbench/unixbench.{{ ansible_date_time.epoch }}.output"
+          dest: "{{ unixbench.output }}/"
+          flat: false
+
+      - name: print unixbench output
+        vars:
+          linux_hostvars: "{{ hostvars | dict2items
+            | selectattr('key','in',ansible_play_hosts)
+            | selectattr('value.unixbench_run','defined') }}"
+        ansible.builtin.pause:
+          seconds: 1
+          prompt: |
+            {% for host in linux_hostvars %}
+
+            [{{ host.key }}] =>
+            --------------------------------------------------
+            {{ host.value.unixbench_run.stdout | default('',true) }}
+            {{ host.value.unixbench_run.stderr | default('',true) }}
+            {% endfor %}
