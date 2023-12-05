@@ -1,0 +1,4 @@
+[submodule ".config"]
+	path = .config
+	url = ../seed-container-config.git
+	branch = main
