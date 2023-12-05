@@ -1,0 +1,53 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  tasks:
+
+    - name: config for localhost
+      become: true
+      when: hosts.localhost | default(true) | bool
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        backup: true
+        marker: "# {mark} ANSIBLE MANAGED BLOCK localhost"
+        block: |
+          127.0.0.1 localhost
+
+          # The following lines are desirable for IPv6 capable hosts
+          ::1 ip6-localhost ip6-loopback
+          fe00::0 ip6-localnet
+          ff00::0 ip6-mcastprefix
+          ff02::1 ip6-allnodes
+          ff02::2 ip6-allrouters
+          ff02::3 ip6-allhosts
+
+    - name: config by address hostname
+      become: true
+      when: hosts.address | default(true) | bool
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        backup: true
+        marker: "# {mark} ANSIBLE MANAGED BLOCK address"
+        block: |
+          {% for item in ansible_play_hosts %}
+          {%   if hostvars[item].hostname is defined %}
+          {%     if hostvars[item].ansible_default_ipv4 is defined %}
+          {{ hostvars[item].ansible_default_ipv4.address }} {{ hostvars[item].hostname }}
+          {%     endif %}
+          {%     if hostvars[item].ansible_default_ipv6 is defined %}
+          {{ hostvars[item].ansible_default_ipv6.address }} {{ hostvars[item].hostname }}
+          {%     endif %}
+          {%   endif %}
+          {% endfor %}
+
+    - name: config by content variable
+      become: true
+      when: hosts.content is defined
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        backup: true
+        marker: "# {mark} ANSIBLE MANAGED BLOCK content"
+        block: "{{ hosts.content }}"
