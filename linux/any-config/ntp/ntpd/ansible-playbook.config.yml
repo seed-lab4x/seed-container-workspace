@@ -1,0 +1,146 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+# https://serverfault.com/questions/878631/ntp-gettime-returns-code-5
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].ntpd | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].ntpd | default(None,true) != None
+          msg: "host var assert fail 'ntpd'"
+          quiet: true
+
+      # not work with systemd
+      - name: masked chronyd/timesyncd service
+        become: true
+        loop:
+          - chronyd
+          - systemd-timesyncd
+        ansible.builtin.systemd_service:
+          state: stopped
+          masked: true
+          name: "{{ item }}"
+        ignore_errors: true
+
+      - name: install ntpd package
+        become: true
+        ansible.builtin.package:
+          name:
+            - ntp
+            - ntpstat
+          state: present
+        register: ntp_package_install
+        until: ntp_package_install is succeeded
+
+      - name: unmasked ntpd service
+        become: true
+        ansible.builtin.systemd_service:
+          state: stopped
+          masked: false
+          name: ntp
+        ignore_errors: true
+
+      - name: start ntpd service
+        ansible.builtin.service:
+          state: started
+          enabled: true
+          name: ntp
+
+      - vars:
+          mode: "{{ ntpd.conf.mode | default('none',true) }}"
+        block:
+        - name: lineinfile replace ntpd conf
+          loop: "{{ ntpd.conf.lineinfile | default([]) | list }}"
+          vars:
+            _default:
+              path: /etc/ntp.conf
+              backup: true
+              create: true
+            _lineinfile: "{{ item | combine(_default, recursive=True) }}"
+          when:
+            - mode == 'lineinfile'
+          ansible.builtin.lineinfile: "{{ _lineinfile }}"
+
+        - name: copy replace ntpd conf
+          loop: "{{ ntpd.conf.cp | default([]) | list }}"
+          vars:
+            _default:
+              dest: /etc/ntp.conf
+              backup: true
+            _copy: "{{ item | combine(_default, recursive=True) }}"
+          when:
+            - mode == 'cp'
+          ansible.builtin.copy: "{{ _copy }}"
+
+        - name: restart ntpd service
+          ansible.builtin.service:
+            state: restarted
+            enabled: true
+            name: ntp
+
+      # must stop ntpd
+      # https://bbs.archlinux.org/viewtopic.php?id=155120
+      - block:
+        - name: stop ntpd service
+          ansible.builtin.service:
+            state: stopped
+            name: ntp
+
+        - name: sync ntp time 
+          become: true
+          ansible.builtin.shell:
+            cmd: ntpd -gq
+
+        - name: start ntpd service
+          ansible.builtin.service:
+            state: started
+            name: ntp
+
+      # Failed to set ntp: NTP not supported
+      # - name: config ntp synchronization
+      #   ansible.builtin.shell:
+      #     cmd: timedatectl set-ntp true
+
+      - block:
+        - name: shell ntpd status
+          loop: 
+            - ntpq -p
+            - ntpstat
+            - ntptime
+            - timedatectl
+          ansible.builtin.shell:
+            cmd: "{{ item }}"
+          register: ntpd_status_shell
+          ignore_errors: true
+
+        - name: print ntpd output
+          vars:
+            linux_hostvars: "{{ hostvars | dict2items
+              | selectattr('key','in',ansible_play_hosts)
+              | selectattr('value.ntpd_status_shell','defined') }}"
+          ansible.builtin.pause:
+            seconds: 1
+            prompt: |
+              {% for host in linux_hostvars %}
+
+              [{{ host.key }}] =>
+              {%   for item in host.value.ntpd_status_shell.results %}
+              --------------------------------------------------
+              $ {{ item.item }}
+              {{ item.stdout | default('',true) }}
+              {{ item.stderr | default('',true) }}
+              {%   endfor %}
+              {% endfor %}
