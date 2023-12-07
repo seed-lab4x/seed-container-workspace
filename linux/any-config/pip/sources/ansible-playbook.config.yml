@@ -1,0 +1,36 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].pip | default(None,true) != None
+          - hostvars[inventory_hostname].pip.mirror is defined
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].pip | default(None,true) != None
+            - hostvars[inventory_hostname].pip.mirror is defined
+          msg: "host var assert fail 'pip'"
+          quiet: true
+
+      - name: upgrade pip use mirror
+        when: pip.upgrade | default(true) | bool
+        ansible.builtin.shell:
+          cmd: "python3 -m pip install -i {{ pip.mirror }} --upgrade pip"
+        register: pip_upgrade
+        until: pip_upgrade is succeeded
+
+      - name: set pip sources mirror
+        ansible.builtin.shell:
+          cmd: "pip3 config set global.index-url {{ pip.mirror }}"
