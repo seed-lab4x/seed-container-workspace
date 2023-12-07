@@ -1,0 +1,62 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].package | default(None,true) != None
+          - hostvars[inventory_hostname].package.sources.mode | default('none',true) in ['sed','lineinfile','cp']
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].package | default(None,true) != None
+            - hostvars[inventory_hostname].package.sources.mode | default('none',true) in ['sed','lineinfile','cp']
+          msg: "host var assert fail 'package'"
+          quiet: true
+
+      - vars:
+          mode: "{{ package.sources.mode | default('none',true) }}"
+        block:
+        - name: sed replace package sources
+          loop: "{{ package.sources.sed | default([]) | list }}"
+          vars:
+            _expression: "{{ item.expression | default(None) }}"
+            _file: "{{ item.file | default(None) }}"
+          when:
+            - mode == 'sed'
+            - _expression != None
+            - _file != None
+          ansible.builtin.shell: "sudo sed \
+            -e '{{ _expression }}' \
+            -i.bak \
+            {{ _file }}"
+
+        - name: lineinfile replace package sources
+          loop: "{{ package.sources.lineinfile | default([]) | list }}"
+          vars:
+            _default:
+              backup: true
+            _lineinfile: "{{ item | combine(_default, recursive=True) }}"
+          when:
+            - mode == 'lineinfile'
+          ansible.builtin.lineinfile: "{{ _lineinfile }}"
+
+        - name: copy replace package sources
+          loop: "{{ package.sources.cp | default([]) | list }}"
+          vars:
+            _default:
+              backup: true
+            _copy: "{{ item | combine(_default, recursive=True) }}"
+          when:
+            - mode == 'cp'
+          ansible.builtin.copy: "{{ _copy }}"
