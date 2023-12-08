@@ -1,0 +1,133 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+# https://www.redhat.com/sysadmin/chrony-time-services-linux
+# https://www.golinuxcloud.com/configure-chrony-ntp-server-client-force-sync/
+# https://benjr.tw/102661
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].chronyd | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].chronyd | default(None,true) != None
+          msg: "host var assert fail 'chronyd'"
+          quiet: true
+
+      # not work with systemd
+      - name: masked ntp/timesyncd service
+        become: true
+        loop:
+          - ntp
+          - systemd-timesyncd
+        ansible.builtin.systemd_service:
+          state: stopped
+          masked: true
+          name: "{{ item }}"
+        ignore_errors: true
+
+      - name: install chronyd package
+        become: true
+        ansible.builtin.package:
+          name: chrony
+          state: present
+        register: chrony_package_install
+        until: chrony_package_install is succeeded
+
+      - name: unmasked chronyd service
+        become: true
+        ansible.builtin.systemd_service:
+          state: stopped
+          masked: false
+          name: chrony
+        ignore_errors: true
+
+      - name: start chronyd service
+        become: true
+        ansible.builtin.service:
+          state: started
+          enabled: true
+          name: chronyd
+
+      - vars:
+          mode: "{{ chronyd.conf.mode | default('none',true) }}"
+        block:
+        - name: lineinfile replace chronyd conf
+          loop: "{{ chronyd.conf.lineinfile | default([]) | list }}"
+          vars:
+            _default:
+              path: /etc/chrony.conf
+              backup: true
+              create: true
+            _lineinfile: "{{ item | combine(_default, recursive=True) }}"
+          when:
+            - mode == 'lineinfile'
+          ansible.builtin.lineinfile: "{{ _lineinfile }}"
+
+        - name: copy replace chronyd conf
+          loop: "{{ chronyd.conf.cp | default([]) | list }}"
+          vars:
+            _default:
+              dest: /etc/chrony.conf
+              backup: true
+            _copy: "{{ item | combine(_default, recursive=True) }}"
+          when:
+            - mode == 'cp'
+          ansible.builtin.copy: "{{ _copy }}"
+
+        - name: restart chronyd service
+          become: true
+          ansible.builtin.service:
+            state: restarted
+            enabled: true
+            name: chronyd
+
+      - name: sync ntp time
+        become: true
+        ansible.builtin.shell:
+          cmd: chronyc makestep
+
+      - name: config ntp synchronization
+        ansible.builtin.shell:
+          cmd: timedatectl set-ntp true
+
+      - block:
+        - name: shell chronycd status
+          loop:
+            - chronyc sources
+            - chronyc tracking
+            - timedatectl
+          ansible.builtin.shell:
+            cmd: "{{ item }}"
+          register: chronyc_status_shell
+          ignore_errors: true
+
+        - name: print status output
+          vars:
+            linux_hostvars: "{{ hostvars | dict2items
+              | selectattr('key','in',ansible_play_hosts)
+              | selectattr('value.chronyc_status_shell','defined') }}"
+          ansible.builtin.pause:
+            seconds: 1
+            prompt: |
+              {% for host in linux_hostvars %}
+
+              [{{ host.key }}] =>
+              {%   for item in host.value.chronyc_status_shell.results %}
+              --------------------------------------------------
+              $ {{ item.item }}
+              {{ item.stdout | default('',true) }}
+              {{ item.stderr | default('',true) }}
+              {%   endfor %}
+              {% endfor %}
