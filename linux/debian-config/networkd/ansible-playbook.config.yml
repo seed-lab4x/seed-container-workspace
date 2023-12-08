@@ -1,0 +1,113 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].networkd | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].networkd | default(None,true) != None
+          msg: "host var assert fail 'networkd'"
+          quiet: true
+
+      # backup interfaces
+      - block:
+        - name: stat interfaces file
+          ansible.builtin.stat:
+            path: /etc/network/interfaces
+          register: interfaces_stat
+
+        - name: backup interfaces file
+          when: interfaces_stat.stat.exists
+          ansible.builtin.copy:
+            remote_src: true
+            src: /etc/network/interfaces
+            dest: /etc/network/interfaces.BeforeEnableNetworkd
+
+        - name: remove interfaces file
+          when: interfaces_stat.stat.exists
+          ansible.builtin.file:
+            state: absent
+            path: /etc/network/interfaces
+
+      - block:
+        - name: check networkd command
+          ansible.builtin.shell:
+            cmd: command -v networkd
+          register: networkd_command_check
+          ignore_errors: true
+
+      - vars:
+          # just make it restart at the end
+          systemd_networkd_apply_config: true
+          systemd_networkd_cleanup: true
+          systemd_networkd_network: "{{ networkd.network | default({},true) }}"
+          systemd_networkd_netdev: "{{ networkd.netdev | default({},true) }}"
+          systemd_networkd_link: "{{ networkd.link | default({},true) }}"
+        block:
+        - name: include vars
+          when: networkd.vars_file is defined
+          ansible.builtin.include_vars:
+            file: "{{ networkd.vars_file }}"
+
+        - name: configure networkd
+          ansible.builtin.include_role:
+            name: stackhpc.systemd_networkd
+            apply:
+              become: true
+
+      - name: start networkd service
+        ansible.builtin.service:
+          state: started
+          enabled: true
+          name: systemd-networkd
+
+      - block:
+        - name: list networkd file
+          ansible.builtin.find:
+            paths: /etc/systemd/network/
+            file_type: file
+            patterns: '*.*'
+          register: networkd_file_list
+
+        - name: shell networkd status
+          vars:
+            list: "{{ networkd_file_list.files | default([],true) | map(attribute='path') }}"
+          loop: "{{ ['cat'] | product(list) | map('join',' ') | list }}"
+          ansible.builtin.shell:
+            cmd: "{{ item }}"
+          register: networkd_status_shell
+
+        - name: print status output
+          vars:
+            linux_hostvars: "{{ hostvars | dict2items
+              | selectattr('key','in',ansible_play_hosts)
+              | selectattr('value.networkd_status_shell','defined') }}"
+          ansible.builtin.pause:
+            seconds: 1
+            prompt: |
+              {% for host in linux_hostvars %}
+
+              [{{ host.key }}] =>
+              {% if host.value.networkd_command_check.rc == 0 %}
+              NOTE: networkd detected, you must disable networkd.io and use native systemd-networkd see https://renediepstraten.nl/?p=51
+              {% endif %}
+              {%   for item in host.value.networkd_status_shell.results %}
+              --------------------------------------------------
+              {{ item.item }}
+              {{ item.stdout | default('',true) }}
+              {{ item.stderr | default('',true) }}
+              {%   endfor %}
+              {% endfor %}
