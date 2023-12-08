@@ -1,0 +1,36 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].ntpdate | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].ntpdate | default(None,true) != None
+          msg: "host var assert fail 'ntpdate'"
+          quiet: true
+
+      - name: install ntpdate package
+        become: true
+        ansible.builtin.package:
+          name: ntpdate
+          state: present
+        register: ntpdate_package_install
+        until: ntpdate_package_install is succeeded
+
+      - name: update ntpdate time
+        become: true
+        ansible.builtin.shell:
+          cmd: "ntpdate -u {{ ntpdate.server | default('0.pool.ntp.org') }}"
