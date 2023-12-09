@@ -1,0 +1,57 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].nmcli | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].nmcli | default(None,true) != None
+          msg: "host var assert fail 'nmcli'"
+          quiet: true
+
+      - name: configure nmcli
+        loop: "{{ nmcli.args | default([],true) }}"
+        community.general.nmcli: "{{ item }}"
+
+      - name: run nmcli command
+        vars:
+          params:
+            _raw_params: "{{ item }}"
+          args: "{{ item if(item | type_debug == 'dict') else params }}"
+        loop: "{{ nmcli.commands | default([],true) }}"
+        ansible.builtin.command:
+        args: "{{ args }}"
+        register: nmcli_command_run
+        until: nmcli_command_run is succeeded
+
+      - name: print command output
+        vars:
+          linux_hostvars: "{{ hostvars | dict2items
+            | selectattr('key','in',ansible_play_hosts)
+            | selectattr('value.nmcli_command_run','defined') }}"
+        ansible.builtin.pause:
+          seconds: 1
+          prompt: |
+            {% for host in linux_hostvars %}
+
+            [{{ host.key }}] =>
+            {%   for item in host.value.nmcli_command_run.results %}
+            --------------------------------------------------
+            {{ item.item }}
+            {{ item.stdout | default('',true) }}
+            {{ item.stderr | default('',true) }}
+            {%   endfor %}
+            {% endfor %}
