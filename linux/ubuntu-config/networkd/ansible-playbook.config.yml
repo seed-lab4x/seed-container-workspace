@@ -1,0 +1,6 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: play
+  ansible.builtin.import_playbook: ../../debian-config/networkd/ansible-playbook.config.yml
