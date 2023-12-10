@@ -1,0 +1,57 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].ufw | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].ufw | default(None,true) != None
+          msg: "host var assert fail 'ufw'"
+          quiet: true
+
+      - name: configure ufw
+        loop: "{{ ufw.args | default([],true) }}"
+        community.general.ufw: "{{ item }}"
+
+      - name: run ufw command
+        vars:
+          params:
+            _raw_params: "{{ item }}"
+          args: "{{ item if(item | type_debug == 'dict') else params }}"
+        loop: "{{ ufw.commands | default([],true) }}"
+        ansible.builtin.command:
+        args: "{{ args }}"
+        register: ufw_command_run
+        until: ufw_command_run is succeeded
+
+      - name: print command output
+        vars:
+          linux_hostvars: "{{ hostvars | dict2items
+            | selectattr('key','in',ansible_play_hosts)
+            | selectattr('value.ufw_command_run','defined') }}"
+        ansible.builtin.pause:
+          seconds: 1
+          prompt: |
+            {% for host in linux_hostvars %}
+
+            [{{ host.key }}] =>
+            {%   for item in host.value.ufw_command_run.results %}
+            --------------------------------------------------
+            {{ item.item }}
+            {{ item.stdout | default('',true) }}
+            {{ item.stderr | default('',true) }}
+            {%   endfor %}
+            {% endfor %}
