@@ -1,0 +1,64 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].firewalld | default(None,true) != None
+          - hostvars[inventory_hostname].firewalld | type_debug == 'list'
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].firewalld | default(None,true) != None
+            - hostvars[inventory_hostname].firewalld | type_debug == 'list'
+          msg: "host var assert fail 'firewalld'"
+          quiet: true
+
+      - name: configure firewalld
+        loop: "{{ firewalld.args | default([],true) }}"
+        ansible.posix.firewalld: "{{ item }}"
+
+      - name: reload firewalld
+        when: firewalld.reload | default(false) | bool
+        ansible.builtin.shell:
+          cmd: firewall-cmd --reload
+
+      - name: run firewalld command
+        vars:
+          params:
+            _raw_params: "{{ item }}"
+          args: "{{ item if(item | type_debug == 'dict') else params }}"
+        loop: "{{ firewalld.commands | default([],true) }}"
+        ansible.builtin.command:
+        args: "{{ args }}"
+        register: firewalld_command_run
+        until: firewalld_command_run is succeeded
+
+      - name: print command output
+        vars:
+          linux_hostvars: "{{ hostvars | dict2items
+            | selectattr('key','in',ansible_play_hosts)
+            | selectattr('value.firewalld_command_run','defined') }}"
+        ansible.builtin.pause:
+          seconds: 1
+          prompt: |
+            {% for host in linux_hostvars %}
+
+            [{{ host.key }}] =>
+            {%   for item in host.value.firewalld_command_run.results %}
+            --------------------------------------------------
+            {{ item.item }}
+            {{ item.stdout | default('',true) }}
+            {{ item.stderr | default('',true) }}
+            {%   endfor %}
+            {% endfor %}
