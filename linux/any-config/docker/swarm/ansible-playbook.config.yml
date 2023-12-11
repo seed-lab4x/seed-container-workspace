@@ -1,0 +1,74 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].docker.swarm | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude var assert."
+
+      block:
+      - name: assert var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].docker.swarm | default(None,true) != None
+          msg: "var assert fail 'docker'"
+          quiet: true
+
+      - vars:
+          docker_swarm_managers_ansible_group: "{{ docker.swarm.group.manager | default('docker-manager',true) }}"
+          docker_swarm_workers_ansible_group: "{{ docker.swarm.group.worker | default('docker-worker',true) }}"
+          docker_swarm_interface: "{{ docker.swarm.interface | default('eth0',true) }}"
+          docker_swarm_port: "{{ docker.swarm.port | default('2377',true) }}"
+          docker_swarm_data_path_port: "{{ docker.swarm.data_path_port | default('',true) }}"
+          docker_swarm_config_networks: "{{ docker.swarm.networks | default([],true) | length > 0 }}"
+          docker_swarm_networks: "{{ docker.swarm.networks | default([],true) }}"
+          docker_swarm_config_settings: "{{
+            [
+              'dispatcher_heartbeat_interval' in docker.swarm.keys() ,
+              'cert_expiry' in docker.swarm.keys(),
+              'task_history_limit' in docker.swarm.keys()
+            ] is any }}"
+          docker_swarm_dispatcher_heartbeat_duration: "{{ docker.swarm.dispatcher_heartbeat_duration | default('5s',true) }}"
+          docker_swarm_cert_expiry: "{{ docker.swarm.cert_expiry | default('2160h0m0s',true) }}"
+          docker_swarm_task_history_limit: "{{ docker.swarm.task_history_limit | default('5',true) }}"
+        block:
+        - name: include vars
+          when: docker.swarm.vars_file is defined
+          ansible.builtin.include_vars:
+            file: "{{ docker.swarm.vars_file }}"
+
+        - name: configure docker
+          ansible.builtin.include_role:
+            name: mrlesmithjr.ansible-docker-swarm
+            apply:
+              become: true
+
+      - block:
+        - name: shell docker info
+          ansible.builtin.shell:
+            cmd: docker info
+          register: docker_info_shell
+
+        - name: print info output
+          vars:
+            linux_hostvars: "{{ hostvars | dict2items
+              | selectattr('key','in',ansible_play_hosts)
+              | selectattr('value.docker_info_shell','defined') }}"
+          ansible.builtin.pause:
+            seconds: 1
+            prompt: |
+              {% for host in linux_hostvars %}
+
+              [{{ host.key }}] =>
+              --------------------------------------------------
+              {{ host.value.docker_info_shell.stdout | default('',true) }}
+              {{ host.value.docker_info_shell.stderr | default('',true) }}
+              {% endfor %}
