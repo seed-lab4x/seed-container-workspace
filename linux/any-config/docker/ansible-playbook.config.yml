@@ -1,0 +1,81 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].docker | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude host var assert."
+
+      block:
+      - name: assert host var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].docker | default(None,true) != None
+          msg: "host var assert fail 'docker'"
+          quiet: true
+
+      - vars:
+          docker_config_service: "{{ docker.opts is defined }}"
+          docker_opts: "{{ docker.opts | default({},true) }}"
+          docker_manage_images: "{{ docker.images | default([],true) | length > 0 }}"
+          docker_images: "{{ docker.images | default([],true) }}"
+          docker_manage_users: "{{ docker.users | default([],true) | length > 0 }}"
+          docker_users: "{{ docker.users | default([],true) }}"
+        block:
+        - name: include vars
+          when: docker.vars_file is defined
+          ansible.builtin.include_vars:
+            file: "{{ docker.vars_file }}"
+
+        - name: configure docker
+          ansible.builtin.include_role:
+            name: mrlesmithjr.docker
+            apply:
+              become: true
+
+      - block:
+        - name: list docker file
+          ansible.builtin.find:
+            paths:
+              - /etc/default
+              - /etc/docker
+            file_type: file
+            patterns:
+              - docker
+              - daemon.json
+          register: docker_file_list
+
+        - name: shell docker status
+          vars:
+            list: "{{ docker_file_list.files | default([],true) | map(attribute='path') }}"
+          loop: "{{ ['cat'] | product(list) | map('join',' ') | list }}"
+          ansible.builtin.shell:
+            cmd: "{{ item }}"
+          register: docker_status_shell
+
+        - name: print status output
+          vars:
+            linux_hostvars: "{{ hostvars | dict2items
+              | selectattr('key','in',ansible_play_hosts)
+              | selectattr('value.docker_status_shell','defined') }}"
+          ansible.builtin.pause:
+            seconds: 1
+            prompt: |
+              {% for host in linux_hostvars %}
+
+              [{{ host.key }}] =>
+              {%   for item in host.value.docker_status_shell.results %}
+              --------------------------------------------------
+              $ {{ item.item }}
+              {{ item.stdout | default('',true) }}
+              {{ item.stderr | default('',true) }}
+              {%   endfor %}
+              {% endfor %}
