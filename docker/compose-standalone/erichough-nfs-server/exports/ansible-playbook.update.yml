@@ -1,0 +1,79 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: update
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-nfs-node' if (groups['docker-nfs-node'] is defined) else 'docker' }}"
+  vars:
+    default:
+      files:
+        - src: "{{ playbook_dir }}/../data/"
+          dest: "{{ workpath.remote.full }}/../data"
+        - src: "{{ playbook_dir }}/exports"
+          dest: "{{ workpath.remote.full }}/exports"
+          redirect: "{{ workpath.remote.full }}/../bind_file-exports"
+      volumes:
+        - name: external_vol-nfs-server-data
+          driver: local
+          push:
+            - remote_src: true
+              src: "{{ workpath.remote.full }}/../data/"
+              dest: ""
+              directory_mode: '0777'
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: push files
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-files.push.yml"
+      vars:
+        files: "{{ nfs_server.exports.files | default(default.files,true) }}"
+
+    - name: init volumes
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-volumes.init.yml"
+      vars:
+        volumes: "{{ nfs_server.exports.volumes | default(default.volumes,true) }}"
+
+    - name: wait container
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-container.wait.yml"
+      vars:
+        container:
+          name: nfs-server
+          until:
+            - container_info.exists
+          retries: 60
+          delay: 60
+
+    - name: exec container
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-container.exec.yml"
+      vars:
+        container:
+          container: nfs-server
+          command: "exportfs -ra"
+          register: container_exec
+
+    - name: print exec
+      vars:
+        docker_hostvars: "{{ hostvars | dict2items
+          | selectattr('key','in',ansible_play_hosts)
+          | selectattr('value.container_exec','defined') }}"
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+          {% for host in docker_hostvars %}
+
+          [{{ host.key }}] => 
+          {{ host.value.container_exec.rc | default('') }}
+          --------------------------------------------------
+          {{ host.value.container_exec.stdout | default('',true) }}
+          {{ host.value.container_exec.stderr | default('',true) }}
+          {% endfor %}
