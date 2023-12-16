@@ -1,0 +1,42 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-logagent-node' if (groups['docker-logagent-node'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          networks:
+            - group: docker-manager
+              name: external_net-elk
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: elasticsearch
+                    port: 9200
+                retries: 10
+                delay: 10
+          envs:
+            - file: external_env-logagent.env
+              content: |
+                LOGS_RECEIVER_URL=http://elastic:elastic.123@elasticsearch:9200
+                LOGS_TOKEN=logagent
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ logagent | default({},true) }}"
