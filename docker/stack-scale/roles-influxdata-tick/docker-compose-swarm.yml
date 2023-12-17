@@ -1,0 +1,216 @@
+version: "3.8"
+
+volumes:
+  influxdb-lib:
+    name: stack_vol-influxdb-lib
+  influxdb-config:
+    name: stack_vol-influxdb-config
+  kapacitor-lib:
+    name: stack_vol-kapacitor-lib
+  kapacitor-config:
+    name: stack_vol-kapacitor-config
+  chronograf-lib:
+    name: stack_vol-chronograf-lib
+
+networks:
+  tick:
+    name: external_net-tick
+    external: true
+
+configs:
+  influxdb.conf:
+    name: stack_cfg-influxdb.conf
+    file: ./config/influxdb.conf
+  kapacitor.conf:
+    name: stack_cfg-kapacitor.conf
+    file: ./config/kapacitor.conf
+  telegraf.conf:
+    name: stack_cfg-telegraf.conf
+    file: ./config/telegraf.conf
+
+services:
+  influxdb:
+    image: influxdb:1.8.10
+    env_file: external_env-influxdb.env
+    configs:
+      - source: influxdb.conf
+        target: /etc/influxdb/influxdb.conf
+    volumes:
+      - influxdb-lib:/var/lib/influxdb
+      - influxdb-config:/etc/influxdb
+    ports:
+      - target: 8086
+        published: 8086
+        protocol: tcp
+        mode: ingress
+      # - 2003:2003
+      # - 25826:25826
+      # - 4242:4242
+      # - 8088:8088
+      # - 8089:8089
+    networks:
+      - tick
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.tick-influxdb == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  kapacitor:
+    image: kapacitor:1.7.1
+    env_file: external_env-kapacitor.env
+    configs:
+      - source: kapacitor.conf
+        target: /etc/kapacitor/kapacitor.conf
+    volumes:
+      - kapacitor-lib:/var/lib/kapacitor
+      - kapacitor-config:/etc/kapacitor
+    ports:
+      - "9092:9092"
+    networks:
+      - tick
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.tick-kapacitor == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  chronograf:
+    image: chronograf:1.10.2
+    env_file: external_env-chronograf.env
+    volumes:
+      - chronograf-lib:/var/lib/chronograf
+    ports:
+      - "8186:8888"
+    networks:
+      - tick
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.tick-chronograf == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  telegraf:
+    image: telegraf:1.29.1
+    hostname: "{{.Node.ID}}"
+    entrypoint: /bin/bash -c "chmod 666 /var/run/docker.sock && /entrypoint.sh telegraf"
+    env_file: external_env-telegraf.env
+    configs:
+      - source: telegraf.conf
+        target: /etc/telegraf/telegraf.conf
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - tick
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.tick-telegraf == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
