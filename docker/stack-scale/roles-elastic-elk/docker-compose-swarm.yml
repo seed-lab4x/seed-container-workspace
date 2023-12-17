@@ -1,0 +1,181 @@
+version: "3.8"
+
+volumes:
+  elasticsearch-config:
+    name: stack_vol-elasticsearch-config
+  elasticsearch-data:
+    name: stack_vol-elasticsearch-data
+  logstash-config:
+    name: stack_vol-logstash-config
+  logstash-pipeline:
+    name: stack_vol-logstash-pipeline
+  kibana-config:
+    name: stack_vol-kibana-config
+  kibana-data:
+    name: stack_vol-kibana-data
+
+networks:
+  elk:
+    name: external_net-elk
+    external: true
+
+configs:
+  elasticsearch.yml:
+    name: external_cfg-elasticsearch.yml
+    file: ./config/elasticsearch.yml
+  logstash.yml:
+    name: external_cfg-logstash.yml
+    file: ./config/logstash.yml
+  logstash.conf:
+    name: external_cfg-logstash.conf
+    file: ./config/logstash.conf
+  kibana.yml:
+    name: external_cfg-kibana.yml
+    file: ./config/kibana.yml
+
+services:
+  elasticsearch:
+    image: elastic/elasticsearch:7.17.9
+    env_file: external_env-elasticsearch.env
+    configs:
+      - source: elasticsearch.yml
+        target: /usr/share/elasticsearch/config/elasticsearch.yml
+    volumes:
+      - elasticsearch-config:/usr/share/elasticsearch/config
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - elk
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.elk-elasticsearch == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "external-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  logstash:
+    image: elastic/logstash:7.17.9
+    env_file: external_env-logstash.env
+    configs:
+      - source: logstash.yml
+        target: /usr/share/logstash/config/logstash.yml
+      - source: logstash.conf
+        target: /usr/share/logstash/pipeline/logstash.conf
+    volumes:
+      - logstash-config:/usr/share/logstash/config
+      - logstash-pipeline:/usr/share/logstash/pipeline
+    ports:
+      - "5044:5044"
+      - "5000:5000"
+      - "9600:9600"
+    networks:
+      - elk
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.elk-logstash == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "external-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  kibana:
+    image: elastic/kibana:7.17.9
+    env_file: external_env-kibana.env
+    configs:
+      - source: kibana.yml
+        target: /usr/share/kibana/config/kibana.yml
+    volumes:
+      - kibana-config:/usr/share/kibana/config
+      - kibana-data:/usr/share/kibana/data
+    ports:
+      - target: 5601
+        published: 5601
+        protocol: tcp
+        mode: ingress
+    networks:
+      - elk
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.elk-kibana == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "external-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
