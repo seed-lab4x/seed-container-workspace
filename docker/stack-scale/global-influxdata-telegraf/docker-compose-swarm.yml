@@ -1,0 +1,56 @@
+version: "3.8"
+
+configs:
+  telegraf.conf:
+    name: stack_cfg-telegraf.conf
+    file: ./config/telegraf.conf
+
+networks:
+  tick:
+    name: external_net-tick
+    external: true
+
+services:
+  telegraf:
+    image: telegraf:1.29.1
+    hostname: "{{.Node.ID}}"
+    entrypoint: /bin/bash -c "chmod 666 /var/run/docker.sock && /entrypoint.sh telegraf"
+    env_file: external_env-telegraf.env
+    configs:
+      - source: telegraf.conf
+        target: /etc/telegraf/telegraf.conf
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - tick
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.tick-telegraf == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
