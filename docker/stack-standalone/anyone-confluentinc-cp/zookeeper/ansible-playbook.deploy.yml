@@ -1,0 +1,55 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-zookeeper' if (groups['docker-cp-zookeeper'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          volumes:
+            - name: external_vol-zookeeper-data
+              driver: local
+            - name: external_vol-zookeeper-log
+              driver: local
+            - name: external_vol-zookeeper-secrets
+              driver: local
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-zookeeper
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                cp-zookeeper: 'true'
+          envs:
+            - file: external_env-zookeeper.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-zk-settings
+                ZOOKEEPER_CLIENT_PORT=2181
+                ZOOKEEPER_SERVER_ID=1
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp.zookeeper | default({},true) }}"
