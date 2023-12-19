@@ -1,0 +1,161 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-node' if (groups['docker-cp-node'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                cp-zookeeper: 'true'
+                cp-kafka: 'true'
+                cp-schema-registry: 'true'
+                cp-kafka-rest: 'true'
+                cp-kafka-connect: 'true'
+                cp-ksqldb-server: 'true'
+                cp-kafka-mqtt: 'true'
+                cp-control-center: 'true'
+                cp-replicator: 'true'
+          envs:
+            - file: external_env-zookeeper.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-zk-settings
+                ZOOKEEPER_CLIENT_PORT=2181
+                ZOOKEEPER_SERVER_ID=1
+            - file: external_env-kafka.env
+              content: |
+                # single-node cluster
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#confluent-ak-configuration
+                KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-confluent-ak-settings
+                KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+                KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://{{ 'kafka' if(ansible_facts.env.WSL_DISTRO_NAME is defined) else ansible_facts.hostname }}:9092
+            - file: external_env-schema-registry.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-sr-settings
+                SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS=PLAINTEXT://kafka:9092
+                SCHEMA_REGISTRY_HOST_NAME=schema-registry
+            - file: external_env-kafka-rest.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-crest-long-settings
+                KAFKA_REST_HOST_NAME=kafka-rest
+                KAFKA_REST_BOOTSTRAP_SERVERS=kafka:9092
+            - file: external_env-kafka-connect.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-kconnect-long-settings
+                CONNECT_BOOTSTRAP_SERVERS=kafka:9092
+                CONNECT_GROUP_ID=connect
+                CONNECT_CONFIG_STORAGE_TOPIC=_connect-config
+                CONNECT_OFFSET_STORAGE_TOPIC=_connect-offsets
+                CONNECT_STATUS_STORAGE_TOPIC=_connect-status
+                CONNECT_KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_INTERNAL_KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_INTERNAL_VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                # bug of https://github.com/confluentinc/kafka-images/issues/50
+                CONNECT_REST_ADVERTISED_HOST_NAME=0.0.0.0
+                CONNECT_PLUGIN_PATH=/usr/share/java
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#optional-kconnect-long-settings
+                # CONNECT_CONFLUENT_LICENSE=
+                # https://docs.confluent.io/platform/7.0/installation/configuration/connect/index.html
+                CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR=1
+                CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR=1
+                CONNECT_STATUS_STORAGE_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/installation/configuration/connect/sink-connect-configs.html
+                CONNECT_ERRORS_DEADLETTERQUEUE_TOPIC_REPLICATION_FACTOR=1
+            - file: external_env-ksqldb-server.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#ksqldb-headless-server-settings
+                KSQL_BOOTSTRAP_SERVERS=kafka:9092
+                KSQL_KSQL_SERVICE_ID=confluent_standalone_1
+                # KSQL_KSQL_QUERIES_FILE=/path/in/container/queries.sql
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#interactive-server-configuration
+                # KSQL_LISTENERS=http://0.0.0.0:8088/
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#configure-a-ksqldb-server-by-using-java-system-properties  
+                # KSQL_OPTS=-Dksql.service.id=confluent_test_3_  -Dksql.queries.file=/path/in/container/queries.sql
+            - file: external_env-kafka-mqtt.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-ak-mqtt-proxy-settings
+                KAFKA_MQTT_BOOTSTRAP_SERVERS=PLAINTEXT://kafka:9092
+                KAFKA_MQTT_TOPIC_REGEX_LIST=temperature:.*temperature, brightness:.*brightness
+                # https://docs.confluent.io/platform/7.0/kafka-mqtt/configuration_options.html#license
+                # KAFKA_MQTT_CONFLUENT_LICENSE=
+                KAFKA_MQTT_CONFLUENT_TOPIC_REPLICATION_FACTOR=1
+            - file: external_env-control-center.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#c3-short-required-settings
+                CONTROL_CENTER_BOOTSTRAP_SERVERS=kafka:9092
+                CONTROL_CENTER_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#c3-short-optional-settings
+                CONTROL_CENTER_CONNECT_CLUSTER=http://kafka-connect:8083
+                # CONTROL_CENTER_LICENSE=
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#c3-configuration
+                CONTROL_CENTER_ZOOKEEPER_CONNECT=zookeeper:2181
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#general
+                CONTROL_CENTER_CONNECT_DEFAULT_CLUSTER=http://kafka-connect:8083
+                CONTROL_CENTER_SCHEMA_REGISTRY_URL=http://kafka-connect:8081
+                CONTROL_CENTER_INTERNAL_TOPICS_REPLICATION=1
+                CONTROL_CENTER_METRICS_TOPIC_REPLICATION=1
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#monitoring-settings
+                CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_REPLICATION=1
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#ksqldb-settings
+                CONTROL_CENTER_KSQL_DEFAULT_URL=http://ksqldb-server:8088
+                CONTROL_CENTER_KSQL_DEFAULT_ADVERTISED_URL=http://{{ 'ksqldb-server' if(ansible_facts.env.WSL_DISTRO_NAME is defined) else ansible_facts.hostname }}:8088
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#internal-command-settings
+                CONTROL_CENTER_COMMAND_TOPIC_REPLICATION=1
+                # https://docs.confluent.io/platform/7.0/multi-dc-deployments/replicator/replicator-quickstart.html#use-c3-short-to-monitor-replicators
+                CONTROL_CENTER_CONNECT_REPLICATOR_CLUSTER=http://replicator:8083
+            - file: external_env-replicator.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-crep-full-settings
+                CONNECT_BOOTSTRAP_SERVERS=kafka:9092
+                CONNECT_GROUP_ID=replicator
+                CONNECT_CONFIG_STORAGE_TOPIC=_replicator-config
+                CONNECT_OFFSET_STORAGE_TOPIC=_replicator-offsets
+                CONNECT_STATUS_STORAGE_TOPIC=_replicator-status
+                CONNECT_KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_INTERNAL_KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_INTERNAL_VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                # bug of https://github.com/confluentinc/kafka-images/issues/50
+                CONNECT_REST_ADVERTISED_HOST_NAME=0.0.0.0
+                CONNECT_PLUGIN_PATH=/usr/share/java
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#optional-crep-full-settings
+                # CONNECT_CONFLUENT_LICENSE=
+                # https://docs.confluent.io/platform/7.0/installation/configuration/connect/index.html
+                CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR=1
+                CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR=1
+                CONNECT_STATUS_STORAGE_REPLICATION_FACTOR=1
+
+                # https://docs.confluent.io/platform/7.0/multi-dc-deployments/replicator/replicator-quickstart.html#use-c3-short-to-monitor-replicators
+                CONNECT_REST_EXTENSION_CLASSES=io.confluent.connect.replicator.monitoring.ReplicatorMonitoringExtension
+                CONNECT_CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS=1
+                CONNECT_METRIC_REPORTERS=io.confluent.metrics.reporter.ConfluentMetricsReporter
+                CONNECT_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS=kafka:9092
+                # https://docs.confluent.io/platform/7.0/multi-dc-deployments/replicator/replicator-monitoring.html#activate-the-extension
+                CLASSPATH=/usr/share/java/kafka-connect-replicator/replicator-rest-extension-7.0.0.jar
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp | default({},true) }}"
