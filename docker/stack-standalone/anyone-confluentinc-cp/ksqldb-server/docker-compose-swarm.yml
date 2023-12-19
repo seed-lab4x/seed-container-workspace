@@ -1,0 +1,58 @@
+version: "3.8"
+
+networks:
+  cp:
+    name: external_net-cp
+    external: true
+  kafka:
+    name: external_net-kafka
+    external: true
+  ksqldb:
+    name: external_net-ksqldb
+    external: true
+
+services:
+  ksqldb-server:
+    image: confluentinc/cp-ksqldb-server:7.0.0
+    env_file: external_env-ksqldb-server.env
+    # environment:
+    #   KSQL_BOOTSTRAP_SERVERS: kafka:9092
+    #   KSQL_KSQL_SERVICE_ID: confluent_standalone_1
+    ports:
+      - "8088:8088"
+    networks:
+      - cp
+      - kafka
+      - ksqldb
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.cp-ksqldb-server == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
