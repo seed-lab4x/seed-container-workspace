@@ -1,0 +1,78 @@
+version: "3.8"
+
+volumes:
+  kafka-connect-secrets:
+    name: external_vol-kafka-connect-secrets
+    external: true
+  kafka-connect-jars:
+    name: external_vol-kafka-connect-jars
+    external: true
+
+networks:
+  cp:
+    name: external_net-cp
+    external: true
+  kafka:
+    name: external_net-kafka
+    external: true
+
+services:
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.0.0
+    env_file: external_env-kafka-connect.env
+    environment:
+      # healthcheck use by https://github.com/confluentinc/kafka-images/blob/aa10c6399fea4039587adf5c574fdf1ab908f2f4/kafka-connect-base/include/etc/confluent/docker/healthcheck.sh#L16
+      CONNECT_REST_PORT: 8083
+      # CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      # CONNECT_GROUP_ID: connect
+      # CONNECT_CONFIG_STORAGE_TOPIC: _connect-config
+      # CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      # CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      # CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # CONNECT_INTERNAL_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # CONNECT_INTERNAL_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      # CONNECT_REST_ADVERTISED_HOST_NAME: 0.0.0.0
+      # CONNECT_PLUGIN_PATH: /usr/share/java
+    volumes:
+      # - kafka-connect-data:/var/lib/kafka/data
+      # - kafka-connect-secrets:/etc/kafka/secrets
+      - kafka-connect-secrets:/etc/kafka-connect/secrets
+      - kafka-connect-jars:/etc/kafka-connect/jars
+    ports:
+      - "8083:8083"
+    networks:
+      - cp
+      - kafka
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.cp-kafka-connect == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
