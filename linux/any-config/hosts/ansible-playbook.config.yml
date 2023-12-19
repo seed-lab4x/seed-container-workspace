@@ -8,12 +8,8 @@
 
     - name: config for localhost
       become: true
-      when: hosts.localhost | default(true) | bool
-      ansible.builtin.blockinfile:
-        path: /etc/hosts
-        backup: true
-        marker: "# {mark} ANSIBLE MANAGED BLOCK localhost"
-        block: |
+      vars:
+        enable: |
           127.0.0.1 localhost
 
           # The following lines are desirable for IPv6 capable hosts
@@ -23,10 +19,15 @@
           ff02::1 ip6-allnodes
           ff02::2 ip6-allrouters
           ff02::3 ip6-allhosts
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        backup: true
+        marker: "# {mark} ANSIBLE MANAGED BLOCK localhost"
+        block: "{{ (hosts.localhost | default(true)) | ternary(enable,'') }}"
 
     - name: config by address hostname
       become: true
-      when: hosts.address | default(true) | bool
+      when: (hosts.address | default(false) | type_debug == 'list') | ternary(true,false)
       ansible.builtin.blockinfile:
         path: /etc/hosts
         backup: true
@@ -34,12 +35,11 @@
         block: |
           {% for item in ansible_play_hosts %}
           {%   if hostvars[item].hostname is defined %}
-          {%     if hostvars[item].ansible_default_ipv4 is defined %}
-          {{ hostvars[item].ansible_default_ipv4.address }} {{ hostvars[item].hostname }}
-          {%     endif %}
-          {%     if hostvars[item].ansible_default_ipv6 is defined %}
-          {{ hostvars[item].ansible_default_ipv6.address }} {{ hostvars[item].hostname }}
-          {%     endif %}
+          {%     for key in hosts.address %}
+          {%       if hostvars[item][key].address is defined %}
+          {{ hostvars[item][key].address }} {{ hostvars[item].hostname }}
+          {%       endif %}
+          {%     endfor %}
           {%   endif %}
           {% endfor %}
 
