@@ -1,0 +1,67 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-kafka' if (groups['docker-cp-kafka'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          volumes:
+            - name: external_vol-kafka-data
+              driver: local
+            - name: external_vol-kafka-secrets
+              driver: local
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-zookeeper
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: zookeeper
+                    port: 2181
+                retries: 10
+                delay: 10
+            - group: docker-manager
+              name: external_net-kafka
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                cp-kafka: 'true'
+          envs:
+            # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-zk-settings
+            - file: external_env-kafka.env
+              content: |
+                # single-node cluster
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#confluent-ak-configuration
+                KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-confluent-ak-settings
+                KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+                KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://{{ 'kafka' if(ansible_facts.env.WSL_DISTRO_NAME is defined) else ansible_facts.hostname }}:9092
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp.kafka | default({},true) }}"

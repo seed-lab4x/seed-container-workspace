@@ -1,0 +1,72 @@
+version: "3.8"
+
+volumes:
+  kafka-data:
+    name: external_vol-kafka-data
+    external: true
+  kafka-secrets:
+    name: external_vol-kafka-secrets
+    external: true
+
+networks:
+  cp:
+    name: external_net-cp
+    external: true
+  kafka:
+    name: external_net-kafka
+    external: true
+  zookeeper:
+    name: external_net-zookeeper
+    external: true
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.0.0
+    env_file: external_env-kafka.env
+    environment:
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - kafka-secrets:/etc/kafka/secrets
+    ports:
+      - "9092:9092"
+    networks:
+      cp:
+      zookeeper:
+      kafka:
+        aliases:
+          - kafka
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.cp-kafka == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
