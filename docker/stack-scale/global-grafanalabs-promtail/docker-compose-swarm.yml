@@ -1,0 +1,60 @@
+version: "3.8"
+
+
+configs:
+  promtail.yml:
+    name: stack_cfg-promtail.yml
+    file: ./config/promtail.yml
+
+networks:
+  loki:
+    name: external_net-loki
+    external: true
+
+services:
+  promtail:
+    image: grafana/promtail:2.9.3
+    env_file: external_env-promtail.env
+    configs:
+      - source: promtail.yml
+        target: /etc/promtail/config.yml
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - target: 9080
+        published: 9080
+        protocol: tcp
+        mode: host
+    networks:
+      - loki
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
