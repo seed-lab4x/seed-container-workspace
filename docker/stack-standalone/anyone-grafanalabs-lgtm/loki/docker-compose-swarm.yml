@@ -1,0 +1,72 @@
+version: "3.8"
+
+configs:
+  loki.yaml:
+    name: stack_cfg-loki.yaml
+    file: ../config/loki.yaml
+
+volumes:
+  storage:
+    name: external_vol-loki-storage
+    external: true
+
+networks:
+  lgtm:
+    name: external_net-lgtm
+    external: true
+  loki:
+    name: external_net-loki
+    external: true
+
+services:
+  loki:
+    image: grafana/loki:2.9.3
+    env_file: external_env-loki.env
+    configs:
+      - source: loki.yaml
+        target: /etc/loki/local-config.yaml
+    volumes:
+      - storage:/loki
+    ports:
+      - 3100:3100
+    networks:
+      - lgtm
+      - loki
+    # healthcheck:
+    #   test: curl -f http://localhost:6800 || exit 1
+    #   interval: 60s
+    #   timeout: 5s
+    #   retries: 10
+    #   start_period: 10m
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.lgtm-loki == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
