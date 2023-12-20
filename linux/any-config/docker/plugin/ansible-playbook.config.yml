@@ -1,0 +1,27 @@
+#!/usr/bin/env -S ansible-playbook -K -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: config
+  hosts: linux
+  become: true
+  tasks:
+
+    - rescue:
+      - name: rescue|fail tasks
+        when:
+          - hostvars[inventory_hostname].docker.plugin | default(None,true) != None
+        ansible.builtin.fail:
+          msg: "config fail. exclude var assert."
+
+      block:
+      - name: assert var
+        ansible.builtin.assert:
+          that:
+            - hostvars[inventory_hostname].docker.plugin | default(None,true) != None
+          msg: "var assert fail 'docker.plugin'"
+          quiet: true
+
+      - name: configure plugin
+        loop: "{{ docker.plugin | default([],true) }}"
+        community.docker.docker_plugin: "{{ item }}"
