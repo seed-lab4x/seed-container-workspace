@@ -1,0 +1,53 @@
+version: "3.8"
+
+networks:
+  prom:
+    name: external_net-prom
+    external: true
+
+services:
+  dockerd-exporter:
+    image: homecentr/dockerd-exporter:1.0.1
+    env_file: external_env-dockerd-exporter.env
+    # environment:
+    #   PUID: 7077
+    #   PGID: 7077
+    #   DOCKERD_HOST: 172.17.0.1
+    #   DOCKERD_PORT: 9323
+    # ports:
+    #   - target: 9323
+    #     published: 9323
+    #     protocol: tcp
+    #     mode: host
+    networks:
+      - prom
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
