@@ -1,0 +1,61 @@
+version: "3.8"
+
+networks:
+  prom:
+    name: external_net-prom
+    external: true
+
+services:
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    env_file: external_env-node-exporter.env
+    command:
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--path.procfs=/host/proc'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.textfile.directory=/home/'
+      - '--collector.meminfo_numa'
+      - '--no-collector.ipvs'
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/host/sys:ro
+      - /proc:/host/proc:ro
+      - /etc/hostname:/etc/nodename
+    # ports:
+    #   - target: 9100
+    #     published: 9100
+    #     protocol: tcp
+    #     mode: host
+    networks:
+      - prom
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first

@@ -35,3 +35,12 @@ scrape_configs:
           - tasks.dockerd-exporter
         type: A
         port: 9323
+
+
+  - job_name: node
+    scrape_interval: 5s
+    dns_sd_configs:
+      - names:
+          - tasks.node-exporter
+        type: A
+        port: 9100
