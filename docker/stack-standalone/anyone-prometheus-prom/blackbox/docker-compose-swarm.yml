@@ -1,0 +1,58 @@
+version: "3.8"
+
+configs:
+  blackbox.yml:
+    name: stack_cfg-blackbox.yml
+    file: ../config/blackbox.yml
+
+networks:
+  prom:
+    name: external_net-prom
+    external: true
+
+services:
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.24.0
+    env_file: external_env-blackbox-exporter.env
+    configs:
+      - source: blackbox.yml
+        target: /etc/blackbox_exporter/config.yml
+    # ports:
+    #   - target: 9115
+    #     published: 9115
+    #     protocol: tcp
+    #     mode: host
+    networks:
+      - prom
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.prom-blackbox == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
