@@ -4,6 +4,9 @@ volumes:
   data:
     name: external_vol-prometheus-data
     external: true
+  etc:
+    name: external_vol-prometheus-etc
+    external: true
 
 networks:
   prom:
@@ -24,6 +27,7 @@ services:
         target: /etc/prometheus/prometheus.yml
     volumes:
       - data:/prometheus
+      - etc:/etc/prometheus
     ports:
       - target: 9090
         published: 9090

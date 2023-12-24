@@ -1,0 +1,82 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: update
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-prom-prometheus' if (groups['docker-prom-prometheus'] is defined) else 'docker' }}"
+  vars:
+    default:
+      files:
+        - src: "{{ playbook_dir }}/scrapes/"
+          dest: "{{ workpath.remote.full }}/scrapes/"
+      volumes:
+        - name: external_vol-prometheus-etc
+          driver: local
+          push:
+            - dest: "scrapes"
+              directory_mode: '0777'
+            - remote_src: true
+              src: "{{ workpath.remote.full }}/scrapes/"
+              dest: "scrapes"
+              directory_mode: '0777'
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -3
+
+    - name: push files
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-files.push.yml"
+      vars:
+        files: "{{ prom.prometheus.scrapes.files | default(default.files,true) }}"
+
+    - name: init volumes
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-volumes.init.yml"
+      vars:
+        volumes: "{{ prom.prometheus.scrapes.volumes | default(default.volumes,true) }}"
+
+    - name: wait service
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-service.wait.yml"
+      vars:
+        service_share:
+          any: true
+          containers:
+            any: true
+        service:
+          name: "{{ workpath.name }}_prometheus"
+          until:
+            - service_info.exists
+          retries: 60
+          delay: 60
+
+    - name: exec service
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-service.exec.yml"
+      vars:
+        service:
+          name: "{{ workpath.name }}_prometheus"
+          command: "kill -SIGHUP 1"
+          register: service_exec
+
+    - name: print exec
+      vars:
+        docker_hostvars: "{{ hostvars | dict2items
+          | selectattr('key','in',ansible_play_hosts)
+          | selectattr('value.service_exec','defined') }}"
+      ansible.builtin.pause:
+        seconds: 1
+        prompt: |
+          {% for host in docker_hostvars %}
+
+          [{{ host.key }}] => 
+          {{ host.value.service_exec.rc | default('') }}
+          --------------------------------------------------
+          {{ host.value.service_exec.stdout | default('',true) }}
+          {{ host.value.service_exec.stderr | default('',true) }}
+          {% endfor %}
