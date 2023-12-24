@@ -1,0 +1,50 @@
+version: "3.8"
+
+networks:
+  prom:
+    name: external_net-prom
+    external: true
+
+services:
+  webhook-logger:
+    image: ghcr.io/tomtom-international/alertmanager-webhook-logger:1.0
+    env_file: external_env-webhook-logger.env
+    ports:
+      - target: 6725
+        published: 6725
+        protocol: tcp
+        mode: ingress
+    networks:
+      - prom
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.alertmanager-logger == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
