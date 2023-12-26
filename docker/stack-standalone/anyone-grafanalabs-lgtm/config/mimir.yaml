@@ -3,6 +3,9 @@
 # Run Mimir in single process mode, with all components running in 1 process.
 target: all,alertmanager,overrides-exporter
 
+server:
+  log_level: warn
+
 # Configure Mimir to use Minio as object storage backend.
 common:
   storage:
@@ -21,6 +24,10 @@ memberlist:
   join_members:
     - mimir:7946
 
+ingester:
+  ring:
+    replication_factor: 1
+
 ruler:
   rule_path: /mimir/ruler
   alertmanager_url: http://127.0.0.1:8080/alertmanager
@@ -33,6 +40,3 @@ alertmanager:
   data_dir: /mimir/alertmanager
   # fallback_config_file: /etc/alertmanager-fallback-config.yaml
   external_url: http://localhost:9009/alertmanager
-
-server:
-  log_level: warn
