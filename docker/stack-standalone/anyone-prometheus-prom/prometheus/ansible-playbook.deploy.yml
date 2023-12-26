@@ -52,6 +52,10 @@
               name: external_net-prom
               driver: overlay
               attachable: true
+            - group: docker-manager
+              name: external_net-mimir
+              driver: overlay
+              attachable: true
           labels:
             - group: docker-manager
               labels:

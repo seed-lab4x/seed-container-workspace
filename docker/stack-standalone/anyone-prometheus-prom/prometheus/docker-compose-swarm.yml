@@ -12,6 +12,9 @@ networks:
   prom:
     name: external_net-prom
     external: true
+  mimir:
+    name: external_net-mimir
+    external: true
 
 configs:
   prometheus.yml:
@@ -35,6 +38,7 @@ services:
         mode: ingress
     networks:
       - prom
+      - mimir
     deploy:
       endpoint_mode: vip
       mode: replicated
