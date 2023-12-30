@@ -1,0 +1,52 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-lgtm-node' if (groups['docker-lgtm-node'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          files:
+            - group: docker-manager
+              src: "{{ playbook_dir }}/../config/tempo.yaml"
+              dest: "{{ workpath.remote.full }}/../config/tempo.yaml"
+          volumes:
+            - name: external_vol-tempo-storage
+              driver: local
+          networks:
+            - group: docker-manager
+              name: external_net-lgtm
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-tempo
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                lgtm-tempo: 'true'
+          envs:
+            - file: external_env-tempo.env
+              content: ''
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ lgtm.tempo | default({},true) }}"

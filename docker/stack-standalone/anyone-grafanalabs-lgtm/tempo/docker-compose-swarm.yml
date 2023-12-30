@@ -1,0 +1,82 @@
+version: "3.8"
+
+configs:
+  tempo.yaml:
+    name: stack_cfg-tempo.yaml
+    file: ../config/tempo.yaml
+
+volumes:
+  storage:
+    name: external_vol-tempo-storage
+    external: true
+
+networks:
+  lgtm:
+    name: external_net-lgtm
+    external: true
+  tempo:
+    name: external_net-tempo
+    external: true
+
+services:
+  tempo:
+    image: grafana/tempo:2.3.1
+    env_file: external_env-tempo.env
+    command: -config.file=/etc/tempo/tempo.yaml
+    configs:
+      - source: tempo.yaml
+        target: /etc/tempo/tempo.yaml
+    volumes:
+      - storage:/data
+    ports:
+      # - "14268:14268"  # jaeger ingest
+      # tempo
+      - target: 3200
+        published: 3200
+        protocol: tcp
+        mode: ingress
+      # - "9095:9095" # tempo grpc
+      # - "4317:4317"  # otlp grpc
+      # - "4318:4318"  # otlp http
+      # - "9411:9411"   # zipkin
+    networks:
+      - lgtm
+      - tempo
+    # healthcheck:
+    #   test: curl -f http://localhost:6800 || exit 1
+    #   interval: 60s
+    #   timeout: 5s
+    #   retries: 10
+    #   start_period: 10m
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.lgtm-tempo == true
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
