@@ -1,0 +1,73 @@
+version: "3.8"
+
+volumes:
+  kapacitor-lib:
+    name: external_vol-kapacitor-lib
+    external: true
+  kapacitor-config:
+    name: external_vol-kapacitor-config
+    external: true
+
+networks:
+  tick:
+    name: external_net-tick
+    external: true
+  kapacitor:
+    name: external_net-kapacitor
+    external: true
+
+configs:
+  kapacitor.conf:
+    name: stack_cfg-kapacitor.conf
+    file: ../config/kapacitor.conf
+
+services:
+  kapacitor:
+    image: kapacitor:1.7.1
+    env_file: external_env-kapacitor.env
+    configs:
+      - source: kapacitor.conf
+        target: /etc/kapacitor/kapacitor.conf
+    volumes:
+      - kapacitor-lib:/var/lib/kapacitor
+      - kapacitor-config:/etc/kapacitor
+    ports:
+      - target: 9092
+        published: 8092
+        protocol: tcp
+        mode: ingress
+    networks:
+      - tick
+      - kapacitor
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.tick-kapacitor == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
