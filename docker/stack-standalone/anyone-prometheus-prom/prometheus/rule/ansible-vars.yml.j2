@@ -4,6 +4,10 @@ files:
   - path: "{{ workpath.remote.full }}/rules/"
   - path: "{{ workpath.remote.full }}/rules/example.yml"
     copy: "{{ playbook_dir }}/rules/example.yml"
+<% if hostvars[inventory_hostname].prom.node | default(None,true) != None %>
+  - path: "{{ workpath.remote.full }}/rules/instance-node.yml"
+    copy: "{{ playbook_dir }}/rules/instance-node.yml"
+<% endif %>
 volumes:
   - name: external_vol-prometheus-etc
     driver: local
