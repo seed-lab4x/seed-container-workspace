@@ -1,0 +1,57 @@
+version: "3.8"
+
+volumes:
+  chronograf-lib:
+    name: external_vol-chronograf-lib
+    external: true
+
+networks:
+  tick:
+    name: external_net-tick
+    external: true
+
+services:
+  chronograf:
+    image: chronograf:1.10.2
+    env_file: external_env-chronograf.env
+    volumes:
+      - chronograf-lib:/var/lib/chronograf
+    ports:
+      - target: 8888
+        published: 8087
+        protocol: tcp
+        mode: ingress
+    networks:
+      - tick
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.tick-chronograf == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
