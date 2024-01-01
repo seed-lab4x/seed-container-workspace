@@ -17,36 +17,21 @@
         workpath:
           index: -2
 
+    - name: select var
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-var.select.yml"
+      vars:
+        var:
+          - name: stack
+            file: "{{ playbook_dir }}/ansible-vars.yml"
+            local: true
+            once: true
+          - name: stack
+            file: "{{ inventory_dir }}/../dynamic-vars/{{ workpath.name }}/ansible-vars.yml"
+            template: "{{ playbook_dir }}/ansible-vars.yml.j2"
+            local: true
+            once: true
+            matcher:
+              - "{{ hostvars[inventory_hostname].prom.prometheus.auto | default(None,true) != None }}"
+
     - name: deploy stack
       include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
-      vars:
-        stack:
-          files:
-            - group: docker-manager
-              path: "{{ workpath.remote.full }}/../config/prometheus.yml"
-              copy: "{{ playbook_dir }}/../config/prometheus.yml"
-          volumes:
-            - name: external_vol-prometheus-data
-              driver: local
-          networks:
-            - group: docker-manager
-              name: external_net-prom
-              driver: overlay
-              attachable: true
-            - group: docker-manager
-              name: external_net-prometheus
-              driver: overlay
-              attachable: true
-          labels:
-            - group: docker-manager
-              labels:
-                prom-prometheus: 'anyone'
-          envs:
-            - file: external_env-prometheus.env
-              content: ''
-          composes:
-            - file: docker-compose-swarm.yml
-              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
-          share:
-            once: true
-          override: "{{ prom.prometheus | default({},true) }}"

@@ -1,0 +1,31 @@
+
+
+files:
+  - group: docker-manager
+    path: "{{ workpath.remote.full }}/../config/prometheus.yml"
+    template: "{{ playbook_dir }}/../config/prometheus.yml.j2"
+volumes:
+  - name: external_vol-prometheus-data
+    driver: local
+networks:
+  - group: docker-manager
+    name: external_net-prom
+    driver: overlay
+    attachable: true
+  - group: docker-manager
+    name: external_net-prometheus
+    driver: overlay
+    attachable: true
+labels:
+  - group: docker-manager
+    labels:
+      prom-prometheus: 'anyone'
+envs:
+  - file: external_env-prometheus.env
+    content: ''
+composes:
+  - file: docker-compose-swarm.yml
+    src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+share:
+  once: true
+override: "{{ prom.prometheus | default({},true) }}"
