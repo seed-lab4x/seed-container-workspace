@@ -1,0 +1,87 @@
+
+files:
+  - group: docker-manager
+    template: "{{ playbook_dir }}/../config/prometheus.yml.j2"
+    dest: "{{ workpath.remote.full }}/../config/prometheus.yml"
+
+<% if profile is contains('cadvisor') %>
+  - src: "{{ playbook_dir }}/scrape/scrapes/cadvisor.yml"
+    dest: "{{ workpath.remote.full }}/scrape/scrapes/cadvisor.yml"
+<% endif %>
+
+<% if profile is contains('blackbox') %>
+  - src: "{{ playbook_dir }}/scrape/scrapes/blackbox.yml"
+    dest: "{{ workpath.remote.full }}/scrape/scrapes/blackbox.yml"
+<% endif %>
+
+<% if profile is contains('dockerd') %>
+  - src: "{{ playbook_dir }}/scrape/scrapes/dockerd.yml"
+    dest: "{{ workpath.remote.full }}/scrape/scrapes/dockerd.yml"
+<% endif %>
+
+<% if profile is contains('mimir') %>
+  - src: "{{ playbook_dir }}/scrape/scrapes/mimir.yml"
+    dest: "{{ workpath.remote.full }}/scrape/scrapes/mimir.yml"
+<% endif %>
+
+<% if profile is contains('node') %>
+  - src: "{{ playbook_dir }}/scrape/scrapes/node.yml"
+    dest: "{{ workpath.remote.full }}/scrape/scrapes/node.yml"
+<% endif %>
+
+<% if profile is contains('pushgateway') %>
+  - src: "{{ playbook_dir }}/scrape/scrapes/pushgateway.yml"
+    dest: "{{ workpath.remote.full }}/scrape/scrapes/pushgateway.yml"
+<% endif %>
+
+  - src: "{{ playbook_dir }}/rule/rules/example.yml"
+    dest: "{{ workpath.remote.full }}/rule/rules/example.yml"
+
+<% if profile is contains('node') %>
+  - src: "{{ playbook_dir }}/scrape/scrapes/instance-node.yml"
+    dest: "{{ workpath.remote.full }}/scrape/scrapes/instance-node.yml"
+<% endif %>
+volumes:
+  - name: external_vol-prometheus-data
+    driver: local
+  - name: external_vol-prometheus-etc
+    driver: local
+    push:
+      - dest: "scrapes"
+        directory_mode: '0777'
+      - remote_src: true
+        src: "{{ workpath.remote.full }}/scrape/scrapes/"
+        dest: "scrapes"
+        directory_mode: '0777'
+      - dest: "rules"
+        directory_mode: '0777'
+      - remote_src: true
+        src: "{{ workpath.remote.full }}/rule/rules/"
+        dest: "rules"
+        directory_mode: '0777'
+networks:
+  - group: docker-manager
+    name: external_net-prom
+    driver: overlay
+    attachable: true
+
+<% if profile is contains('mimir') %>
+  - group: docker-manager
+    name: external_net-mimir
+    driver: overlay
+    attachable: true
+<% endif %>
+
+labels:
+  - group: docker-manager
+    labels:
+      prom-prometheus: 'true'
+envs:
+  - file: external_env-prometheus.env
+    content: ''
+composes:
+  - file: docker-compose-swarm.yml
+    src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+share:
+  once: true
+override: "{{ prom.prometheus | default({},true) }}"
