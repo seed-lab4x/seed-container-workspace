@@ -1,0 +1,15 @@
+# code: language=ansible
+
+files:
+  - path: "{{ workpath.remote.full }}/scrapes/"
+    copy: "{{ playbook_dir }}/scrapes/"
+volumes:
+  - name: external_vol-prometheus-etc
+    driver: local
+    push:
+      - dest: "scrapes"
+        directory_mode: '0777'
+      - remote_src: true
+        src: "{{ workpath.remote.full }}/scrapes/"
+        dest: "scrapes"
+        directory_mode: '0777'

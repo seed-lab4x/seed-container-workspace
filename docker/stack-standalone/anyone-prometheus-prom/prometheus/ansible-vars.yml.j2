@@ -4,9 +4,19 @@ files:
   - group: docker-manager
     path: "{{ workpath.remote.full }}/../config/prometheus.yml"
     template: "{{ playbook_dir }}/../config/prometheus.yml.j2"
+  - path: "{{ workpath.remote.full }}/scrape/scrapes/"
 volumes:
   - name: external_vol-prometheus-data
     driver: local
+  - name: external_vol-prometheus-etc
+    driver: local
+    push:
+      - dest: "scrapes"
+        directory_mode: '0777'
+      - remote_src: true
+        src: "{{ workpath.remote.full }}/scrape/scrapes/"
+        dest: "scrapes"
+        directory_mode: '0777'
 networks:
   - group: docker-manager
     name: external_net-prom
