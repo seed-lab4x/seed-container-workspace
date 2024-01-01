@@ -1,0 +1,82 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-control-center' if (groups['docker-cp-control-center'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-zookeeper
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-kafka
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: kafka
+                    port: 9092
+                retries: 10
+                delay: 10
+            - group: docker-manager
+              name: external_net-ksqldb
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                cp-control-center: 'anyone'
+          envs:
+            # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-zk-settings
+            - file: external_env-control-center.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#c3-short-required-settings
+                CONTROL_CENTER_BOOTSTRAP_SERVERS=kafka:9092
+                CONTROL_CENTER_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#c3-short-optional-settings
+                CONTROL_CENTER_CONNECT_CLUSTER=http://kafka-connect:8083
+                # CONTROL_CENTER_LICENSE=
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#c3-configuration
+                CONTROL_CENTER_ZOOKEEPER_CONNECT=zookeeper:2181
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#general
+                CONTROL_CENTER_CONNECT_DEFAULT_CLUSTER=http://kafka-connect:8083
+                CONTROL_CENTER_SCHEMA_REGISTRY_URL=http://kafka-connect:8081
+                CONTROL_CENTER_INTERNAL_TOPICS_REPLICATION=1
+                CONTROL_CENTER_METRICS_TOPIC_REPLICATION=1
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#monitoring-settings
+                CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_REPLICATION=1
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#ksqldb-settings
+                CONTROL_CENTER_KSQL_DEFAULT_URL=http://ksqldb-server:8088
+                CONTROL_CENTER_KSQL_DEFAULT_ADVERTISED_URL=http://{{ 'ksqldb-server' if(ansible_facts.env.WSL_DISTRO_NAME is defined) else ansible_facts.hostname }}:8088
+                # https://docs.confluent.io/platform/7.0/control-center/installation/configuration.html#internal-command-settings
+                CONTROL_CENTER_COMMAND_TOPIC_REPLICATION=1
+                # https://docs.confluent.io/platform/7.0/multi-dc-deployments/replicator/replicator-quickstart.html#use-c3-short-to-monitor-replicators
+                CONTROL_CENTER_CONNECT_REPLICATOR_CLUSTER=http://replicator:8083
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp.control_center | default({},true) }}"

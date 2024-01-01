@@ -1,0 +1,65 @@
+version: "3.8"
+
+volumes:
+  control-center-data:
+    name: external_vol-control-center-data
+    external: true
+
+networks:
+  cp:
+    name: external_net-cp
+    external: true
+  kafka:
+    name: external_net-kafka
+    external: true
+
+services:
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.0.0
+    env_file: external_env-control-center.env
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    environment:
+      # CONTROL_CENTER_BOOTSTRAP_SERVERS: kafka:9092
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+    volumes:
+      - control-center-data:/var/lib/confluent-control-center
+    ports:
+      - "9021:9021"
+    networks:
+      - cp
+      - kafka
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.cp-control-center == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
