@@ -21,6 +21,10 @@ files:
   - path: "{{ workpath.remote.full }}/scrape/scrapes/node.yml"
     copy: "{{ playbook_dir }}/scrape/scrapes/node.yml"
 <% endif %>
+<% if hostvars[inventory_hostname].cadvisor | default(None,true) != None %>
+  - path: "{{ workpath.remote.full }}/scrape/scrapes/cadvisor.yml"
+    copy: "{{ playbook_dir }}/scrape/scrapes/cadvisor.yml"
+<% endif %>
   - path: "{{ workpath.remote.full }}/rule/rules/"
 <% if hostvars[inventory_hostname].prom.node | default(None,true) != None %>
   - path: "{{ workpath.remote.full }}/rule/rules/instance-node.yml"

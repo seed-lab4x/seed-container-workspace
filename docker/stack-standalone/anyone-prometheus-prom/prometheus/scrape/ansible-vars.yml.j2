@@ -18,6 +18,10 @@ files:
   - path: "{{ workpath.remote.full }}/scrapes/node.yml"
     copy: "{{ playbook_dir }}/scrapes/node.yml"
 <% endif %>
+<% if hostvars[inventory_hostname].cadvisor | default(None,true) != None %>
+  - path: "{{ workpath.remote.full }}/scrapes/cadvisor.yml"
+    copy: "{{ playbook_dir }}/scrapes/cadvisor.yml"
+<% endif %>
 volumes:
   - name: external_vol-prometheus-etc
     driver: local
