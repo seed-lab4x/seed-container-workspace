@@ -1,0 +1,82 @@
+version: "3.8"
+
+volumes:
+  logstash-config:
+    name: external_vol-logstash-config
+    external: true
+  logstash-pipeline:
+    name: external_vol-logstash-pipeline
+    external: true
+
+networks:
+  elk:
+    name: external_net-elk
+    external: true
+  logstash:
+    name: external_net-logstash
+    external: true
+
+configs:
+  logstash.yml:
+    name: external_cfg-logstash.yml
+    file: ../config/logstash.yml
+  logstash.conf:
+    name: external_cfg-logstash.conf
+    file: ../config/logstash.conf
+
+services:
+  logstash:
+    image: elastic/logstash:7.17.9
+    env_file: external_env-logstash.env
+    configs:
+      - source: logstash.yml
+        target: /usr/share/logstash/config/logstash.yml
+      - source: logstash.conf
+        target: /usr/share/logstash/pipeline/logstash.conf
+    volumes:
+      - logstash-config:/usr/share/logstash/config
+      - logstash-pipeline:/usr/share/logstash/pipeline
+    ports:
+      - target: 5044
+        published: 5044
+        protocol: tcp
+        mode: ingress
+      - target: 5000
+        published: 5000
+        protocol: tcp
+        mode: ingress
+    networks:
+      - elk
+      - logstash
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.elk-logstash == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "external-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
