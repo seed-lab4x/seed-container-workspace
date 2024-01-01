@@ -1,0 +1,309 @@
+version: "3.8"
+
+configs:
+  prometheus.yml:
+    name: stack_cfg-prometheus.yml
+    file: ./config/prometheus.yml
+  alertmanager.yml:
+    name: stack_cfg-alertmanager.yml
+    file: ./config/alertmanager.yml
+  blackbox.yml:
+    name: stack_cfg-blackbox.yml
+    file: ./config/blackbox.yml
+
+volumes:
+  prometheus-data:
+    name: external_vol-prometheus-data
+    external: true
+  alertmanager-data:
+    name: external_vol-alertmanager-data
+    external: true
+  pushgateway-data:
+    name: external_vol-pushgateway-data
+    external: true
+
+networks:
+  prom:
+    name: external_net-prom
+    external: true
+  prometheus:
+    name: external_net-prometheus
+    external: true
+  pushgateway:
+    name: external_net-pushgateway
+    external: true
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    env_file: external_env-prometheus.env
+    configs:
+      - source: prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus-data:/prometheus
+    ports:
+      - 9090:9090
+    networks:
+      - prom
+      - prometheus
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.prom-prometheus == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    env_file: external_env-alertmanager.env
+    # command: --config.file=/etc/alertmanager/alertmanager.yml --log.level=debug
+    configs:
+      - source: alertmanager.yml
+        target: /etc/alertmanager/alertmanager.yml
+    volumes:
+      - alertmanager-data:/alertmanager
+    # ports:
+    #   - 9093:9093
+    networks:
+      - prom
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.prom-alertmanager == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  pushgateway:
+    image: prom/pushgateway:v1.6.2
+    env_file: external_env-pushgateway.env
+    volumes:
+      - pushgateway-data:/pushgateway
+    ports:
+      - 9091:9091
+    networks:
+      - prom
+      - pushgateway
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.prom-pushgateway == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.24.0
+    env_file: external_env-blackbox-exporter.env
+    configs:
+      - source: blackbox.yml
+        target: /etc/blackbox_exporter/config.yml
+    # ports:
+    #   - 9115:9115
+    networks:
+      - prom
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.prom-blackbox == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  dockerd-exporter:
+    image: homecentr/dockerd-exporter:1.0.1
+    env_file: external_env-dockerd-exporter.env
+    # environment:
+    #   PUID: 7077
+    #   PGID: 7077
+    #   DOCKERD_HOST: 172.17.0.1
+    #   DOCKERD_PORT: 9323
+    # ports:
+    #   - 9323:9323
+    networks:
+      - prometheus
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.prom-dockerd == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    env_file: external_env-node-exporter.env
+    command:
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--path.procfs=/host/proc'
+      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+      - '--collector.textfile.directory=/home/'
+      - '--collector.meminfo_numa'
+      - '--no-collector.ipvs'
+    volumes:
+      - /:/rootfs:ro
+      - /sys:/host/sys:ro
+      - /proc:/host/proc:ro
+      - /etc/hostname:/etc/nodename
+    # ports:
+    #   - 9100: 9100
+    networks:
+      - prom
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.prom-node == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
