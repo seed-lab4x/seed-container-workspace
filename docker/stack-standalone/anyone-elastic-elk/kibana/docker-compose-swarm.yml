@@ -1,0 +1,69 @@
+version: "3.8"
+
+volumes:
+  kibana-config:
+    name: external_vol-kibana-config
+    external: true
+  kibana-data:
+    name: external_vol-kibana-data
+    external: true
+
+networks:
+  elk:
+    name: external_net-elk
+    external: true
+
+configs:
+  kibana.yml:
+    name: external_cfg-kibana.yml
+    file: ../config/kibana.yml
+
+services:
+  kibana:
+    image: elastic/kibana:7.17.9
+    env_file: external_env-kibana.env
+    configs:
+      - source: kibana.yml
+        target: /usr/share/kibana/config/kibana.yml
+    volumes:
+      - kibana-config:/usr/share/kibana/config
+      - kibana-data:/usr/share/kibana/data
+    ports:
+      - target: 5601
+        published: 5601
+        protocol: tcp
+        mode: ingress
+    networks:
+      - elk
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.elk-kibana == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "external-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
