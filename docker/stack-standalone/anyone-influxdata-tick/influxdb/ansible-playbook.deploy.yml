@@ -1,0 +1,54 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-tick-influxdb' if (groups['docker-tick-influxdb'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          files:
+            - group: docker-manager
+              path: "{{ workpath.remote.full }}/../config/influxdb.conf"
+              copy: "{{ playbook_dir }}/../config/influxdb.conf"
+          volumes:
+            - name: external_vol-influxdb-lib
+              driver: local
+            - name: external_vol-influxdb-config
+              driver: local
+          networks:
+            - group: docker-manager
+              name: external_net-tick
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-influxdb
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                tick-influxdb: 'anyone'
+          envs:
+            - file: external_env-influxdb.env
+              content: ''
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ tick.influxdb | default({},true) }}"
