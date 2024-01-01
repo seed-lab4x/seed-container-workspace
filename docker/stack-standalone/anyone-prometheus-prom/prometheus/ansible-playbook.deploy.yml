@@ -1,0 +1,52 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-prom-prometheus' if (groups['docker-prom-prometheus'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          files:
+            - group: docker-manager
+              path: "{{ workpath.remote.full }}/../config/prometheus.yml"
+              copy: "{{ playbook_dir }}/../config/prometheus.yml"
+          volumes:
+            - name: external_vol-prometheus-data
+              driver: local
+          networks:
+            - group: docker-manager
+              name: external_net-prom
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-prometheus
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                prom-prometheus: 'anyone'
+          envs:
+            - file: external_env-prometheus.env
+              content: ''
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ prom.prometheus | default({},true) }}"
