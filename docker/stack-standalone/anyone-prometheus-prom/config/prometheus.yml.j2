@@ -6,6 +6,9 @@ global:
   external_labels:
     monitor: 'seed-prometheus'
 
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_config_files:
   - /etc/prometheus/scrapes/*.yml
 

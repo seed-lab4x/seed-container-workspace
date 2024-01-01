@@ -6,6 +6,8 @@ files:
     copy: "{{ playbook_dir }}/../config/prometheus.yml"
   - path: "{{ workpath.remote.full }}/scrape/scrapes/"
     copy: "{{ playbook_dir }}/scrape/scrapes/"
+  - path: "{{ workpath.remote.full }}/rule/rules/"
+    copy: "{{ playbook_dir }}/rule/rules/"
 volumes:
   - name: external_vol-prometheus-data
     driver: local
@@ -17,6 +19,12 @@ volumes:
       - remote_src: true
         src: "{{ workpath.remote.full }}/scrape/scrapes/"
         dest: "scrapes"
+        directory_mode: '0777'
+      - dest: "rules"
+        directory_mode: '0777'
+      - remote_src: true
+        src: "{{ workpath.remote.full }}/rule/rules/"
+        dest: "rules"
         directory_mode: '0777'
 networks:
   - group: docker-manager

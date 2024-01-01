@@ -1,0 +1,16 @@
+# code: language=ansible
+
+files:
+  - path: "{{ workpath.remote.full }}/rules/"
+  - path: "{{ workpath.remote.full }}/rules/example.yml"
+    copy: "{{ playbook_dir }}/rules/example.yml"
+volumes:
+  - name: external_vol-prometheus-etc
+    driver: local
+    push:
+      - dest: "rules"
+        directory_mode: '0777'
+      - remote_src: true
+        src: "{{ workpath.remote.full }}/rules/"
+        dest: "rules"
+        directory_mode: '0777'
