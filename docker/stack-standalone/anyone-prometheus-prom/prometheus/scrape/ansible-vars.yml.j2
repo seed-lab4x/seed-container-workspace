@@ -6,6 +6,10 @@ files:
   - path: "{{ workpath.remote.full }}/scrapes/pushgateway.yml"
     copy: "{{ playbook_dir }}/scrapes/pushgateway.yml"
 <% endif %>
+<% if hostvars[inventory_hostname].prom.blackbox | default(None,true) != None %>
+  - path: "{{ workpath.remote.full }}/scrapes/blackbox.yml"
+    copy: "{{ playbook_dir }}/scrapes/blackbox.yml"
+<% endif %>
 volumes:
   - name: external_vol-prometheus-etc
     driver: local

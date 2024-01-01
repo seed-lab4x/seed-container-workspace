@@ -9,6 +9,10 @@ files:
   - path: "{{ workpath.remote.full }}/scrape/scrapes/pushgateway.yml"
     copy: "{{ playbook_dir }}/scrape/scrapes/pushgateway.yml"
 <% endif %>
+<% if hostvars[inventory_hostname].prom.blackbox | default(None,true) != None %>
+  - path: "{{ workpath.remote.full }}/scrape/scrapes/blackbox.yml"
+    copy: "{{ playbook_dir }}/scrape/scrapes/blackbox.yml"
+<% endif %>
   - path: "{{ workpath.remote.full }}/rule/rules/"
 volumes:
   - name: external_vol-prometheus-data
