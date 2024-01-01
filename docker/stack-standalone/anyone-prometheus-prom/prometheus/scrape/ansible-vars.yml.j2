@@ -10,6 +10,10 @@ files:
   - path: "{{ workpath.remote.full }}/scrapes/blackbox.yml"
     copy: "{{ playbook_dir }}/scrapes/blackbox.yml"
 <% endif %>
+<% if hostvars[inventory_hostname].prom.dockerd | default(None,true) != None %>
+  - path: "{{ workpath.remote.full }}/scrapes/dockerd.yml"
+    copy: "{{ playbook_dir }}/scrapes/dockerd.yml"
+<% endif %>
 volumes:
   - name: external_vol-prometheus-etc
     driver: local
