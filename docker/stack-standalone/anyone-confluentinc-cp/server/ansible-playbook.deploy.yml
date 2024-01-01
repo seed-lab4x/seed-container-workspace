@@ -1,0 +1,84 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-server' if (groups['docker-cp-server'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          volumes:
+            - name: external_vol-server-data
+              driver: local
+            - name: external_vol-server-secrets
+              driver: local
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-zookeeper
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: zookeeper
+                    port: 2181
+                retries: 10
+                delay: 10
+            - group: docker-manager
+              name: external_net-kafka
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                cp-server: 'anyone'
+          envs:
+            # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-zk-settings
+            - file: external_env-server.env
+              content: |
+                # single-node cluster
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#confluent-enterprise-ak-configuration
+                KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-confluent-enterprise-ak-settings
+                KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+                KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://{{ 'kafka' if(ansible_facts.env.WSL_DISTRO_NAME is defined) else ansible_facts.hostname }}:9092
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#optional-confluent-enterprise-ak-settings
+                # KAFKA_CONFLUENT_LICENSE=
+                # https://docs.confluent.io/platform/7.0/installation/configuration/broker-configs.html
+                KAFKA_CONFLUENT_TIER_METADATA_REPLICATION_FACTOR=1
+                KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/installation/configuration/license-configs.html
+                # KAFKA_CONFLUENT_LICENSE=
+                KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/kafka/sbc/configuration_options.html#sbc-configurations-on-the-brokers
+                KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR=1
+                # https://docs.confluent.io/platform/7.0/kafka/metrics-reporter.html#enabling-metrics-reporter
+                KAFKA_CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS=1
+                # https://docs.confluent.io/platform/7.0/kafka/metrics-reporter.html#configuration-options
+                KAFKA_METRIC_REPORTERS=io.confluent.metrics.reporter.ConfluentMetricsReporter
+                KAFKA_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS=kafka:9092
+
+                # confluent.durability.topic.replication.factor = 3
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp.server | default({},true) }}"
