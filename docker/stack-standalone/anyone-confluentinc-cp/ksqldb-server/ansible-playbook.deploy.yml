@@ -1,0 +1,64 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-ksqldb-server' if (groups['docker-cp-ksqldb-server'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-kafka
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: kafka
+                    port: 9092
+                retries: 10
+                delay: 10
+            - group: docker-manager
+              name: external_net-ksqldb
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                cp-ksqldb-server: 'anyone'
+          envs:
+            # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-zk-settings
+            - file: external_env-ksqldb-server.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#ksqldb-headless-server-settings
+                KSQL_BOOTSTRAP_SERVERS=kafka:9092
+                KSQL_KSQL_SERVICE_ID=confluent_standalone_1
+                # KSQL_KSQL_QUERIES_FILE=/path/in/container/queries.sql
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#interactive-server-configuration
+                # KSQL_LISTENERS=http://0.0.0.0:8088/
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#configure-a-ksqldb-server-by-using-java-system-properties  
+                # KSQL_OPTS=-Dksql.service.id=confluent_test_3_  -Dksql.queries.file=/path/in/container/queries.sql
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp.ksqldb_server | default({},true) }}"
