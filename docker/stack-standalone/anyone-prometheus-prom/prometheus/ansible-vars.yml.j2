@@ -5,6 +5,10 @@ files:
     path: "{{ workpath.remote.full }}/../config/prometheus.yml"
     template: "{{ playbook_dir }}/../config/prometheus.yml.j2"
   - path: "{{ workpath.remote.full }}/scrape/scrapes/"
+<% if hostvars[inventory_hostname].prom.pushgateway | default(None,true) != None %>
+  - path: "{{ workpath.remote.full }}/scrape/scrapes/pushgateway.yml"
+    copy: "{{ playbook_dir }}/scrape/scrapes/pushgateway.yml"
+<% endif %>
   - path: "{{ workpath.remote.full }}/rule/rules/"
 volumes:
   - name: external_vol-prometheus-data
