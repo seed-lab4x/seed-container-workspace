@@ -1,0 +1,49 @@
+version: "3.8"
+
+networks:
+  elasticsearch:
+    name: external_net-elasticsearch
+    external: true
+
+services:
+  logagent:
+    image: sematext/logagent:3.3.0
+    env_file: external_env-logagent.env
+    # environment:
+    #   LOGS_TOKEN: "1"
+    #   LOGS_RECEIVER_URL: "https://elasticserch-server-name:9200"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - elasticsearch
+    deploy:
+      endpoint_mode: vip
+      mode: global
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.logagent-node == global
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
