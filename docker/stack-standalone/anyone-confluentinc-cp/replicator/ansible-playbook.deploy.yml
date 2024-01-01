@@ -1,0 +1,86 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-replicator' if (groups['docker-cp-replicator'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-zookeeper
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-kafka
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: kafka
+                    port: 9092
+                retries: 10
+                delay: 10
+            - group: docker-manager
+              name: external_net-ksqldb
+              driver: overlay
+              attachable: true
+          labels:
+            - group: docker-manager
+              labels:
+                cp-replicator: 'anyone'
+          envs:
+            - file: external_env-replicator.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-crep-full-settings
+                CONNECT_BOOTSTRAP_SERVERS=kafka:9092
+                CONNECT_GROUP_ID=replicator
+                CONNECT_CONFIG_STORAGE_TOPIC=_replicator-config
+                CONNECT_OFFSET_STORAGE_TOPIC=_replicator-offsets
+                CONNECT_STATUS_STORAGE_TOPIC=_replicator-status
+                CONNECT_KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_INTERNAL_KEY_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                CONNECT_INTERNAL_VALUE_CONVERTER=org.apache.kafka.connect.json.JsonConverter
+                # bug of https://github.com/confluentinc/kafka-images/issues/50
+                CONNECT_REST_ADVERTISED_HOST_NAME=0.0.0.0
+                CONNECT_PLUGIN_PATH=/usr/share/java
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#optional-crep-full-settings
+                # CONNECT_CONFLUENT_LICENSE=
+                # https://docs.confluent.io/platform/7.0/installation/configuration/connect/index.html
+                CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR=1
+                CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR=1
+                CONNECT_STATUS_STORAGE_REPLICATION_FACTOR=1
+
+                # https://docs.confluent.io/platform/7.0/multi-dc-deployments/replicator/replicator-quickstart.html#use-c3-short-to-monitor-replicators
+                CONNECT_REST_EXTENSION_CLASSES=io.confluent.connect.replicator.monitoring.ReplicatorMonitoringExtension
+                CONNECT_CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS=1
+                CONNECT_METRIC_REPORTERS=io.confluent.metrics.reporter.ConfluentMetricsReporter
+                CONNECT_CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS=kafka:9092
+                # https://docs.confluent.io/platform/7.0/multi-dc-deployments/replicator/replicator-monitoring.html#activate-the-extension
+                CLASSPATH=/usr/share/java/kafka-connect-replicator/replicator-rest-extension-7.0.0.jar
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp.replicator | default({},true) }}"
