@@ -1,0 +1,71 @@
+version: "3.8"
+
+volumes:
+  zookeeper-data:
+    name: external_vol-zookeeper-data
+    external: true
+  zookeeper-log:
+    name: external_vol-zookeeper-log
+    external: true
+  zookeeper-secrets:
+    name: external_vol-zookeeper-secrets
+    external: true
+
+networks:
+  cp:
+    name: external_net-cp
+    external: true
+  zookeeper:
+    name: external_net-zookeeper
+    external: true
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.0.0
+    env_file: external_env-zookeeper.env
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      # ZOOKEEPER_SERVER_ID: 1
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-log:/var/lib/zookeeper/log
+      - zookeeper-secrets:/etc/zookeeper/secrets
+    ports:
+      - "2181:2181"
+    networks:
+      cp:
+      zookeeper:
+        aliases:
+          - zookeeper
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.cp-zookeeper == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
