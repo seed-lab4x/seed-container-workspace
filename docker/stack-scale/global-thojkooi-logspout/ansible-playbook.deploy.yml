@@ -1,0 +1,46 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-logspout-node' if (groups['docker-logspout-node'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          networks:
+            - group: docker-manager
+              name: external_net-logstash
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: logstash
+                    port: 5000
+                retries: 10
+                delay: 10
+          labels:
+            - group: docker-manager
+              labels:
+                logspout-node: 'global'
+          envs:
+            - file: external_env-logspout.env
+              content: |
+                ROUTE_URIS=logstash://logstash:5000
+                LOGSTASH_TAGS=docker-elk
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ logspout | default({},true) }}"
