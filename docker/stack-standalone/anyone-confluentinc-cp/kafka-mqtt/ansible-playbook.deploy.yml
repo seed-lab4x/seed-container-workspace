@@ -1,0 +1,58 @@
+#!/usr/bin/env -S ansible-playbook -i ${PWD}/ansible-inventories
+# code: language=ansible
+---
+
+- name: deploy
+  environment:
+    PATH: "{{ ansible_env.PATH }}:{{ env_path | default('') }}"
+  hosts: "{{ 'docker:&docker-cp-kafka-mqtt' if (groups['docker-cp-kafka-mqtt'] is defined) else 'docker' }}"
+  tasks:
+
+    - name: fact workspace
+      include_tasks: "{{ workspace.local }}/.seed/ansible-tasks/seed-workspace.fact.yml"
+
+    - name: fact workpath
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-workpath.fact.yml"
+      vars:
+        workpath:
+          index: -2
+
+    - name: deploy stack
+      include_tasks: "{{ workspace.local }}/{{ workspace.seedpath }}/ansible-tasks/seed-docker/docker-stack.deploy.yml"
+      vars:
+        stack:
+          networks:
+            - group: docker-manager
+              name: external_net-cp
+              driver: overlay
+              attachable: true
+            - group: docker-manager
+              name: external_net-kafka
+              driver: overlay
+              attachable: true
+              wait:
+                hosts:
+                  - host: kafka
+                    port: 9092
+                retries: 10
+                delay: 10
+          labels:
+            - group: docker-manager
+              labels:
+                cp-kafka-mqtt: 'anyone'
+          envs:
+            # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-zk-settings
+            - file: external_env-kafka-mqtt.env
+              content: |
+                # https://docs.confluent.io/platform/7.0/installation/docker/config-reference.html#required-ak-mqtt-proxy-settings
+                KAFKA_MQTT_BOOTSTRAP_SERVERS=PLAINTEXT://kafka:9092
+                KAFKA_MQTT_TOPIC_REGEX_LIST=temperature:.*temperature, brightness:.*brightness
+                # https://docs.confluent.io/platform/7.0/kafka-mqtt/configuration_options.html#license
+                # KAFKA_MQTT_CONFLUENT_LICENSE=
+                KAFKA_MQTT_CONFLUENT_TOPIC_REPLICATION_FACTOR=1
+          composes:
+            - file: docker-compose-swarm.yml
+              src: "{{ playbook_dir }}/docker-compose-swarm.yml"
+          share:
+            once: true
+          override: "{{ cp.kafka_mqtt | default({},true) }}"

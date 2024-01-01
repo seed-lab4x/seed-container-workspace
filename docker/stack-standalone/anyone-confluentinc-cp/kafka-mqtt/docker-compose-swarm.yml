@@ -1,0 +1,55 @@
+version: "3.8"
+
+networks:
+  cp:
+    name: external_net-cp
+    external: true
+  kafka:
+    name: external_net-kafka
+    external: true
+
+services:
+  kafka-mqtt:
+    image: confluentinc/cp-kafka-mqtt:7.0.0
+    env_file: external_env-kafka-mqtt.env
+    # environment:
+    #   KAFKA_MQTT_CONFLUENT_TOPIC_REPLICATION_FACTOR: 1
+    #   KAFKA_MQTT_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+    #   KAFKA_MQTT_TOPIC_REGEX_LIST: temperature:.*temperature, brightness:.*brightness
+    ports:
+      - "1883:1883"
+    networks:
+      - cp
+      - kafka
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.cp-kafka-mqtt == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
