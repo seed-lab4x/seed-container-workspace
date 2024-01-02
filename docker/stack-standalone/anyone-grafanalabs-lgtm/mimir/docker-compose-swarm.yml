@@ -1,0 +1,76 @@
+version: "3.8"
+
+configs:
+  mimir.yaml:
+    name: stack_cfg-mimir.yaml
+    file: ../config/mimir.yaml
+
+volumes:
+  storage:
+    name: external_vol-mimir-storage
+    external: true
+
+networks:
+  lgtm:
+    name: external_net-lgtm
+    external: true
+  mimir:
+    name: external_net-mimir
+    external: true
+
+services:
+  mimir:
+    image: grafana/mimir:2.10.5
+    env_file: external_env-mimir.env
+    command: -config.file=/etc/mimir/mimir.yaml
+    configs:
+      - source: mimir.yaml
+        target: /etc/mimir/mimir.yaml
+    volumes:
+      - storage:/storage
+    ports:
+      - target: 8080
+        published: 9009
+        protocol: tcp
+        mode: ingress
+    networks:
+      - lgtm
+      - mimir
+    # healthcheck:
+    #   test: curl -f http://localhost:8080 || exit 1
+    #   interval: 60s
+    #   timeout: 5s
+    #   retries: 10
+    #   start_period: 10m
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.lgtm-mimir == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
