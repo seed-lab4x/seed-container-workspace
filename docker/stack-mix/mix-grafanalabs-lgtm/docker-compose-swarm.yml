@@ -1,0 +1,252 @@
+version: "3.8"
+
+configs:
+  loki.yaml:
+    name: stack_cfg-loki.yaml
+    file: ./config/loki.yaml
+  tempo.yaml:
+    name: stack_cfg-tempo.yaml
+    file: ./config/tempo.yaml
+  mimir.yaml:
+    name: stack_cfg-mimir.yaml
+    file: ./config/mimir.yaml
+
+volumes:
+  loki-storage:
+    name: stack_vol-loki-storage
+  grafana-lib:
+    name: stack_vol-grafana-lib
+  grafana-provisioning:
+    name: stack_vol-grafana-provisioning
+  tempo-storage:
+    name: stack_vol-tempo-storage
+  mimir-storage:
+    name: stack_vol-mimir-storage
+
+networks:
+  lgtm:
+    name: external_net-lgtm
+    external: true
+  loki:
+    name: external_net-loki
+    external: true
+  tempo:
+    name: external_net-tempo
+    external: true
+  mimir:
+    name: external_net-mimir
+    external: true
+
+services:
+  loki:
+    image: grafana/loki:2.9.3
+    env_file: external_env-loki.env
+    configs:
+      - source: loki.yaml
+        target: /etc/loki/local-config.yaml
+    volumes:
+      - loki-storage:/loki
+    ports:
+      - 3100:3100
+    networks:
+      - lgtm
+      - loki
+    # healthcheck:
+    #   test: curl -f http://localhost:3100 || exit 1
+    #   interval: 60s
+    #   timeout: 5s
+    #   retries: 10
+    #   start_period: 10m
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.lgtm-loki == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    env_file: external_env-grafana.env
+    volumes:
+      - grafana-lib:/var/lib/grafana
+      - grafana-provisioning:/etc/grafana/provisioning
+    ports:
+      - 3000:3000
+    networks:
+      - lgtm
+    # healthcheck:
+    #   test: curl -f http://localhost:3000 || exit 1
+    #   interval: 60s
+    #   timeout: 5s
+    #   retries: 10
+    #   start_period: 10m
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.lgtm-grafana == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  tempo:
+    image: grafana/tempo:2.3.1
+    env_file: external_env-tempo.env
+    command: -config.file=/etc/tempo/tempo.yaml
+    configs:
+      - source: tempo.yaml
+        target: /etc/tempo/tempo.yaml
+    volumes:
+      - tempo-storage:/storage
+    ports:
+      # - "14268:14268"  # jaeger ingest
+      # tempo
+      - 3200:3200
+      # - "9095:9095"  # tempo grpc
+      # - "4317:4317"  # otlp grpc
+      # - "4318:4318"  # otlp http
+      # - "9411:9411"  # zipkin
+    networks:
+      - lgtm
+      - tempo
+    # healthcheck:
+    #   test: curl -f http://localhost:3200 || exit 1
+    #   interval: 60s
+    #   timeout: 5s
+    #   retries: 10
+    #   start_period: 10m
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.lgtm-tempo == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+
+  mimir:
+    image: grafana/mimir:2.10.5
+    env_file: external_env-mimir.env
+    command: -config.file=/etc/mimir/mimir.yaml
+    configs:
+      - source: mimir.yaml
+        target: /etc/mimir/mimir.yaml
+    volumes:
+      - mimir-storage:/storage
+    ports:
+      - 9009:8080
+    networks:
+      - lgtm
+      - mimir
+    # healthcheck:
+    #   test: curl -f http://localhost:8080 || exit 1
+    #   interval: 60s
+    #   timeout: 5s
+    #   retries: 10
+    #   start_period: 10m
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          - node.labels.lgtm-mimir == mix
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first

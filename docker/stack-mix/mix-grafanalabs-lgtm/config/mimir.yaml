@@ -1,0 +1,43 @@
+# Do not use this configuration in production.
+# It is for demonstration purposes only.
+# Run Mimir in single process mode, with all components running in 1 process.
+target: all,alertmanager,overrides-exporter
+
+server:
+  http_listen_port: 8080
+  log_level: warn
+
+# Configure Mimir to use local filesystem storage backend.
+common:
+  storage:
+    backend: filesystem
+    filesystem:
+      dir: /storage/mimir/tsdb
+
+# Blocks storage requires a prefix when using a common object storage bucket.
+blocks_storage:
+  storage_prefix: blocks
+  tsdb:
+    dir: /storage/mimir/ingester
+
+# Use memberlist, a gossip-based protocol, to enable the 1 Mimir replicas to communicate
+memberlist:
+  join_members:
+    - mimir:7946
+
+ingester:
+  ring:
+    replication_factor: 1
+
+ruler:
+  rule_path: /storage/mimir/ruler
+  alertmanager_url: http://127.0.0.1:8080/alertmanager
+  ring:
+    # Quickly detect unhealthy rulers to speed up the tutorial.
+    heartbeat_period: 2s
+    heartbeat_timeout: 10s
+
+alertmanager:
+  data_dir: /storage/mimir/alertmanager
+  # fallback_config_file: /etc/alertmanager-fallback-config.yaml
+  external_url: http://localhost:9009/alertmanager
