@@ -45,7 +45,7 @@ services:
       - source: loki.yaml
         target: /etc/loki/local-config.yaml
     volumes:
-      - loki-storage:/loki
+      - loki-storage:/storage
     ports:
       - 3100:3100
     networks:

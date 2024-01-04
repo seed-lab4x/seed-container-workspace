@@ -5,15 +5,23 @@ server:
 
 common:
   # 
-  path_prefix: /loki
+  path_prefix: /storage/loki
   replication_factor: 1
   storage:
     filesystem:
-      chunks_directory: /loki/chunks
-      rules_directory: /loki/rules
+      chunks_directory: /storage/loki/chunks
+      rules_directory: /storage/loki/rules
   ring:
     kvstore:
       store: inmemory
+    # https://community.grafana.com/t/loki-error-on-port-9095-error-contacting-scheduler/67263/2
+    instance_interface_names:
+      - eth0
+      - en0
+  # https://community.grafana.com/t/loki-error-on-port-9095-error-contacting-scheduler/67263/2
+  instance_interface_names:
+    - eth0
+    - en0
 
 schema_config:
   configs:
