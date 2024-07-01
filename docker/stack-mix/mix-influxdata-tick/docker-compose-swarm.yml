@@ -62,7 +62,7 @@ services:
         preferences:
           - spread: node.platform.os
       labels:
-        "com.github.xiaoyao9184.docker-seed.type": "stack-scale"
+        "com.github.xiaoyao9184.docker-seed.type": "stack-mix"
         "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
       restart_policy:
         condition: on-failure
@@ -115,7 +115,7 @@ services:
         preferences:
           - spread: node.platform.os
       labels:
-        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.type": "stack-mix"
         "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
       restart_policy:
         condition: on-failure
@@ -158,7 +158,7 @@ services:
         preferences:
           - spread: node.platform.os
       labels:
-        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.type": "stack-mix"
         "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
       restart_policy:
         condition: on-failure
@@ -206,7 +206,7 @@ services:
         preferences:
           - spread: node.platform.os
       labels:
-        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.type": "stack-mix"
         "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
       restart_policy:
         condition: on-failure
