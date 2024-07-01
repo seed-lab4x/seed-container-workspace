@@ -1,0 +1,73 @@
+version: "3.8"
+
+volumes:
+  lib:
+    name: external_vol-registry-lib
+    external: true
+  certs:
+    name: external_vol-registry-certs
+    external: true
+  auth:
+    name: external_vol-registry-auth
+    external: true
+
+networks:
+  registry:
+    name: external_net-registry
+    external: true
+
+services:
+  registry:
+    image: registry:2.8.3
+    env_file: external_env-registry.env
+    volumes:
+      - lib:/var/lib/registry
+      - certs:/certs
+      - auth:/auth
+    ports:
+      - target: 5001
+        published: 5001
+        protocol: tcp
+        mode: ingress
+    networks:
+      - registry
+    deploy:
+      endpoint_mode: vip
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.platform.os == linux
+          # - node.role == manager
+          - node.labels.registry == anyone
+        preferences:
+          - spread: node.platform.os
+      labels:
+        "com.github.xiaoyao9184.docker-seed.type": "stack-standalone"
+        "com.github.xiaoyao9184.docker-seed.creator": "seed-container-workspace"
+      # resources:
+      #   limits:
+      #     cpus: '4'
+      #     memory: 4096M
+      #   reservations:
+      #     cpus: '2'
+      #     memory: 2048M
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 2
+        window: 60s
+      rollback_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: pause
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
+      update_config:
+        parallelism: 0
+        delay: 0s
+        failure_action: rollback
+        monitor: 5m
+        max_failure_ratio: 0
+        order: stop-first
